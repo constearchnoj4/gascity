@@ -4,10 +4,14 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"time"
 
 	"github.com/gastownhall/gascity/internal/beads"
+	"github.com/gastownhall/gascity/internal/config"
+	"github.com/gastownhall/gascity/internal/runtime"
 	"github.com/gastownhall/gascity/internal/session"
+	"github.com/gastownhall/gascity/internal/sessionlog"
 )
 
 // sessionResponse is the JSON representation of a chat session.
@@ -18,22 +22,45 @@ type sessionResponse struct {
 	Reason      string `json:"reason,omitempty"`
 	Title       string `json:"title"`
 	Provider    string `json:"provider"`
+	DisplayName string `json:"display_name,omitempty"`
 	SessionName string `json:"session_name"`
 	CreatedAt   string `json:"created_at"`
 	LastActive  string `json:"last_active,omitempty"`
 	Attached    bool   `json:"attached"`
+
+	Rig  string `json:"rig,omitempty"`
+	Pool string `json:"pool,omitempty"`
+
+	Running       bool   `json:"running"`
+	ActiveBead    string `json:"active_bead,omitempty"`
+	LastOutput    string `json:"last_output,omitempty"`
+	Model         string `json:"model,omitempty"`
+	ContextPct    *int   `json:"context_pct,omitempty"`
+	ContextWindow *int   `json:"context_window,omitempty"`
 }
 
-func sessionToResponse(info session.Info) sessionResponse {
+func sessionToResponse(info session.Info, cfg *config.City) sessionResponse {
+	provider, displayName := info.Provider, ""
+	if cfg != nil {
+		provider, displayName = resolveProviderInfo(info.Provider, cfg)
+	}
+	rig, _ := config.ParseQualifiedName(info.Template)
 	r := sessionResponse{
 		ID:          info.ID,
 		Template:    info.Template,
 		State:       string(info.State),
 		Title:       info.Title,
-		Provider:    info.Provider,
+		Provider:    provider,
+		DisplayName: displayName,
 		SessionName: info.SessionName,
 		CreatedAt:   info.CreatedAt.Format(time.RFC3339),
 		Attached:    info.Attached,
+		Rig:         rig,
+	}
+	if cfg != nil {
+		if agent, ok := findAgent(cfg, info.Template); ok && agent.IsPool() {
+			r.Pool = agent.Name
+		}
 	}
 	if !info.LastActive.IsZero() {
 		r.LastActive = info.LastActive.Format(time.RFC3339)
@@ -44,8 +71,8 @@ func sessionToResponse(info session.Info) sessionResponse {
 // sessionResponseWithReason builds a session response that includes the
 // reason field derived from bead metadata. If the bead is nil (not found
 // in the index), the reason is omitted.
-func sessionResponseWithReason(info session.Info, b *beads.Bead) sessionResponse {
-	r := sessionToResponse(info)
+func sessionResponseWithReason(info session.Info, b *beads.Bead, cfg *config.City) sessionResponse {
+	r := sessionToResponse(info, cfg)
 	if b == nil || info.State == "" {
 		return r
 	}
@@ -78,12 +105,14 @@ func (s *Server) handleSessionList(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "unavailable", "no bead store configured")
 		return
 	}
+	mgr := s.sessionManager(store)
+	cfg := s.state.Config()
 	sp := s.state.SessionProvider()
-	mgr := session.NewManager(store, sp)
 
 	q := r.URL.Query()
 	stateFilter := q.Get("state")
 	templateFilter := q.Get("template")
+	wantPeek := q.Get("peek") == "true"
 
 	sessions, err := mgr.List(stateFilter, templateFilter)
 	if err != nil {
@@ -101,7 +130,8 @@ func (s *Server) handleSessionList(w http.ResponseWriter, r *http.Request) {
 
 	items := make([]sessionResponse, len(sessions))
 	for i, sess := range sessions {
-		items[i] = sessionResponseWithReason(sess, beadIndex[sess.ID])
+		items[i] = sessionResponseWithReason(sess, beadIndex[sess.ID], cfg)
+		s.enrichSessionResponse(&items[i], sess, cfg, sp, wantPeek)
 	}
 	writeJSON(w, http.StatusOK, listResponse{Items: items, Total: len(items)})
 }
@@ -112,8 +142,9 @@ func (s *Server) handleSessionGet(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "unavailable", "no bead store configured")
 		return
 	}
+	mgr := s.sessionManager(store)
+	cfg := s.state.Config()
 	sp := s.state.SessionProvider()
-	mgr := session.NewManager(store, sp)
 
 	id, err := session.ResolveSessionID(store, r.PathValue("id"))
 	if err != nil {
@@ -126,7 +157,10 @@ func (s *Server) handleSessionGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	b, _ := store.Get(id)
-	writeJSON(w, http.StatusOK, sessionResponseWithReason(info, &b))
+	wantPeek := r.URL.Query().Get("peek") == "true"
+	resp := sessionResponseWithReason(info, &b, cfg)
+	s.enrichSessionResponse(&resp, info, cfg, sp, wantPeek)
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) handleSessionSuspend(w http.ResponseWriter, r *http.Request) {
@@ -135,8 +169,7 @@ func (s *Server) handleSessionSuspend(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "unavailable", "no bead store configured")
 		return
 	}
-	sp := s.state.SessionProvider()
-	mgr := session.NewManager(store, sp)
+	mgr := s.sessionManager(store)
 
 	id, err := session.ResolveSessionID(store, r.PathValue("id"))
 	if err != nil {
@@ -156,8 +189,7 @@ func (s *Server) handleSessionClose(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "unavailable", "no bead store configured")
 		return
 	}
-	sp := s.state.SessionProvider()
-	mgr := session.NewManager(store, sp)
+	mgr := s.sessionManager(store)
 
 	id, err := session.ResolveSessionID(store, r.PathValue("id"))
 	if err != nil {
@@ -252,21 +284,60 @@ func (s *Server) handleSessionRename(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := store.Update(id, beads.UpdateOpts{Title: &body.Title}); err != nil {
-		writeError(w, http.StatusInternalServerError, "internal", err.Error())
+	mgr := s.sessionManager(store)
+	if err := mgr.Rename(id, body.Title); err != nil {
+		writeSessionManagerError(w, err)
 		return
 	}
 
 	// Re-fetch to return the updated session, consistent with PATCH.
-	sp := s.state.SessionProvider()
-	mgr := session.NewManager(store, sp)
 	info, err := mgr.Get(id)
 	if err != nil {
 		writeSessionManagerError(w, err)
 		return
 	}
 	updated, _ := store.Get(id)
-	writeJSON(w, http.StatusOK, sessionResponseWithReason(info, &updated))
+	writeJSON(w, http.StatusOK, sessionResponseWithReason(info, &updated, s.state.Config()))
+}
+
+// enrichSessionResponse populates runtime fields on a session response:
+// running state, active bead, peek output, and model/context metadata.
+func (s *Server) enrichSessionResponse(resp *sessionResponse, info session.Info, cfg *config.City, sp runtime.Provider, wantPeek bool) {
+	if info.State != session.StateActive {
+		return
+	}
+
+	resp.Running = sp.IsRunning(info.SessionName)
+	resp.ActiveBead = s.findActiveBead(info.Template, "")
+
+	if wantPeek && resp.Running {
+		if output, err := sp.Peek(info.SessionName, 5); err == nil {
+			resp.LastOutput = output
+		}
+	}
+
+	if resp.Running && info.WorkDir != "" {
+		workDir := info.WorkDir
+		if abs, err := filepath.Abs(workDir); err == nil {
+			workDir = abs
+		}
+		searchPaths := s.sessionLogSearchPaths
+		if searchPaths == nil && cfg != nil {
+			searchPaths = sessionlog.MergeSearchPaths(cfg.Daemon.ObservePaths)
+		}
+		if searchPaths == nil {
+			searchPaths = sessionlog.DefaultSearchPaths()
+		}
+		if sessionFile := sessionlog.FindSessionFile(searchPaths, workDir); sessionFile != "" {
+			if meta, err := sessionlog.ExtractTailMeta(sessionFile); err == nil && meta != nil {
+				resp.Model = meta.Model
+				if meta.ContextUsage != nil {
+					resp.ContextPct = &meta.ContextUsage.Percentage
+					resp.ContextWindow = &meta.ContextUsage.ContextWindow
+				}
+			}
+		}
+	}
 }
 
 // handleSessionPatch handles PATCH /v0/session/{id}. Only title is mutable.
@@ -314,19 +385,18 @@ func (s *Server) handleSessionPatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := store.Update(id, beads.UpdateOpts{Title: &title}); err != nil {
-		writeError(w, http.StatusInternalServerError, "internal", err.Error())
+	mgr := s.sessionManager(store)
+	if err := mgr.Rename(id, title); err != nil {
+		writeSessionManagerError(w, err)
 		return
 	}
 
 	// Re-fetch to get updated state.
-	sp := s.state.SessionProvider()
-	mgr := session.NewManager(store, sp)
 	info, err := mgr.Get(id)
 	if err != nil {
 		writeSessionManagerError(w, err)
 		return
 	}
 	updated, _ := store.Get(id)
-	writeJSON(w, http.StatusOK, sessionResponseWithReason(info, &updated))
+	writeJSON(w, http.StatusOK, sessionResponseWithReason(info, &updated, s.state.Config()))
 }
