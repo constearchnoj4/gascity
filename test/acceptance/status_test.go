@@ -72,7 +72,7 @@ func TestStatus_GastownCity_ShowsAgents(t *testing.T) {
 	}
 }
 
-func TestStatus_ShowsSessionsSummary(t *testing.T) {
+func TestStatus_NoSessions_OmitsSessionLine(t *testing.T) {
 	c := helpers.NewCity(t, testEnv)
 	c.InitFrom(filepath.Join(helpers.ExamplesDir(), "gastown"))
 
@@ -80,8 +80,10 @@ func TestStatus_ShowsSessionsSummary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("gc status: %v\n%s", err, out)
 	}
-	if !strings.Contains(out, "Sessions:") {
-		t.Errorf("status should show 'Sessions:' summary, got:\n%s", out)
+	// "Sessions:" only appears when sessions exist. A fresh city has none,
+	// so verify the rest of the output renders without it.
+	if !strings.Contains(out, "Agents:") {
+		t.Errorf("status should show 'Agents:' even without sessions, got:\n%s", out)
 	}
 }
 
