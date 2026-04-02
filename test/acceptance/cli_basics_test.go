@@ -60,52 +60,51 @@ func TestHelp_ListsSubcommands(t *testing.T) {
 	}
 }
 
-// --- gc hook ---
+// --- gc hook and gc stop ---
 
-// TestHook_NoAgent_ReturnsError verifies that gc hook without $GC_AGENT
-// or a positional argument returns an error with a helpful message.
-func TestHook_NoAgent_ReturnsError(t *testing.T) {
+// TestHookAndStop exercises hook error paths and stop edge cases
+// using a single shared city.
+func TestHookAndStop(t *testing.T) {
 	c := helpers.NewCity(t, testEnv)
 	c.Init("claude")
 
-	// Ensure GC_AGENT is not set in the test env.
-	out, err := c.GC("hook")
-	if err == nil {
-		t.Fatal("expected error for gc hook without agent, got success")
-	}
-	if !strings.Contains(out, "agent not specified") {
-		t.Errorf("expected 'agent not specified' error, got:\n%s", out)
-	}
+	t.Run("Hook_NoAgent_ReturnsError", func(t *testing.T) {
+		out, err := c.GC("hook")
+		if err == nil {
+			t.Fatal("expected error for gc hook without agent, got success")
+		}
+		if !strings.Contains(out, "agent not specified") {
+			t.Errorf("expected 'agent not specified' error, got:\n%s", out)
+		}
+	})
+
+	t.Run("Hook_UnknownAgent_ReturnsError", func(t *testing.T) {
+		out, err := c.GC("hook", "nosuchagent")
+		if err == nil {
+			t.Fatal("expected error for unknown agent, got success")
+		}
+		if !strings.Contains(out, "not found") {
+			t.Errorf("expected 'not found' in error, got:\n%s", out)
+		}
+	})
+
+	t.Run("Hook_Inject_NoAgent_ExitsZero", func(t *testing.T) {
+		out, err := c.GC("hook", "--inject")
+		if err != nil {
+			t.Fatalf("gc hook --inject should always exit 0: %v\n%s", err, out)
+		}
+	})
+
+	t.Run("Stop_InitializedNeverStarted_Succeeds", func(t *testing.T) {
+		out, err := c.GC("stop", c.Dir)
+		if err != nil {
+			t.Fatalf("gc stop on never-started city should succeed: %v\n%s", err, out)
+		}
+		if !strings.Contains(out, "stopped") {
+			t.Errorf("expected 'stopped' in output, got:\n%s", out)
+		}
+	})
 }
-
-// TestHook_UnknownAgent_ReturnsError verifies that gc hook with a
-// nonexistent agent name returns an error.
-func TestHook_UnknownAgent_ReturnsError(t *testing.T) {
-	c := helpers.NewCity(t, testEnv)
-	c.Init("claude")
-
-	out, err := c.GC("hook", "nosuchagent")
-	if err == nil {
-		t.Fatal("expected error for unknown agent, got success")
-	}
-	if !strings.Contains(out, "not found") {
-		t.Errorf("expected 'not found' in error, got:\n%s", out)
-	}
-}
-
-// TestHook_Inject_NoAgent_ExitsZero verifies that gc hook --inject
-// always exits 0 even without an agent (inject mode is silent).
-func TestHook_Inject_NoAgent_ExitsZero(t *testing.T) {
-	c := helpers.NewCity(t, testEnv)
-	c.Init("claude")
-
-	out, err := c.GC("hook", "--inject")
-	if err != nil {
-		t.Fatalf("gc hook --inject should always exit 0: %v\n%s", err, out)
-	}
-}
-
-// --- gc stop (no running city) ---
 
 // TestStop_NotInitialized_ReturnsError verifies that gc stop on a
 // directory with no city.toml returns an error.
@@ -116,19 +115,4 @@ func TestStop_NotInitialized_ReturnsError(t *testing.T) {
 		t.Fatal("expected error stopping non-city directory, got success")
 	}
 	_ = out // Error format varies.
-}
-
-// TestStop_InitializedNeverStarted_Succeeds verifies that gc stop on
-// a city that was initialized but never started exits cleanly.
-func TestStop_InitializedNeverStarted_Succeeds(t *testing.T) {
-	c := helpers.NewCity(t, testEnv)
-	c.Init("claude")
-
-	out, err := c.GC("stop", c.Dir)
-	if err != nil {
-		t.Fatalf("gc stop on never-started city should succeed: %v\n%s", err, out)
-	}
-	if !strings.Contains(out, "stopped") {
-		t.Errorf("expected 'stopped' in output, got:\n%s", out)
-	}
 }

@@ -14,68 +14,60 @@ import (
 	helpers "github.com/gastownhall/gascity/test/acceptance/helpers"
 )
 
-func TestHandoff_NoArgs_ReturnsError(t *testing.T) {
+func TestHandoffCommands(t *testing.T) {
 	c := helpers.NewCity(t, testEnv)
 	c.Init("claude")
 
-	// cobra.RangeArgs(1,2) rejects zero args.
-	_, err := c.GC("handoff")
-	if err == nil {
-		t.Fatal("expected error for handoff without args, got success")
-	}
+	t.Run("NoArgs_ReturnsError", func(t *testing.T) {
+		// cobra.RangeArgs(1,2) rejects zero args.
+		_, err := c.GC("handoff")
+		if err == nil {
+			t.Fatal("expected error for handoff without args, got success")
+		}
+	})
+
+	t.Run("NoSessionContext_ReturnsError", func(t *testing.T) {
+		// Self-handoff requires GC_ALIAS/GC_SESSION_ID which aren't set in tests.
+		_, err := c.GC("handoff", "test subject")
+		if err == nil {
+			t.Fatal("expected error for handoff without session context, got success")
+		}
+	})
+
+	t.Run("RemoteNonexistent_ReturnsError", func(t *testing.T) {
+		_, err := c.GC("handoff", "--target", "nonexistent-session", "test subject")
+		if err == nil {
+			t.Fatal("expected error for handoff to nonexistent target, got success")
+		}
+	})
+
+	t.Run("TooManyArgs_ReturnsError", func(t *testing.T) {
+		// cobra.RangeArgs(1,2) rejects three args.
+		_, err := c.GC("handoff", "subject", "message", "extra")
+		if err == nil {
+			t.Fatal("expected error for too many args, got success")
+		}
+	})
+
+	t.Run("RemoteWithMessage_ReturnsError", func(t *testing.T) {
+		// Remote handoff with nonexistent target + message body.
+		_, err := c.GC("handoff", "--target", "nonexistent", "subject", "body message")
+		if err == nil {
+			t.Fatal("expected error for remote handoff to nonexistent, got success")
+		}
+	})
 }
 
-func TestHandoff_NoSessionContext_ReturnsError(t *testing.T) {
+// --- gc graph ---
+
+func TestGraphCommands(t *testing.T) {
 	c := helpers.NewCity(t, testEnv)
 	c.Init("claude")
 
-	// Self-handoff requires GC_ALIAS/GC_SESSION_ID which aren't set in tests.
-	_, err := c.GC("handoff", "test subject")
-	if err == nil {
-		t.Fatal("expected error for handoff without session context, got success")
-	}
-}
-
-func TestHandoff_RemoteNonexistent_ReturnsError(t *testing.T) {
-	c := helpers.NewCity(t, testEnv)
-	c.Init("claude")
-
-	_, err := c.GC("handoff", "--target", "nonexistent-session", "test subject")
-	if err == nil {
-		t.Fatal("expected error for handoff to nonexistent target, got success")
-	}
-}
-
-func TestHandoff_TooManyArgs_ReturnsError(t *testing.T) {
-	c := helpers.NewCity(t, testEnv)
-	c.Init("claude")
-
-	// cobra.RangeArgs(1,2) rejects three args.
-	_, err := c.GC("handoff", "subject", "message", "extra")
-	if err == nil {
-		t.Fatal("expected error for too many args, got success")
-	}
-}
-
-func TestHandoff_RemoteWithMessage_ReturnsError(t *testing.T) {
-	c := helpers.NewCity(t, testEnv)
-	c.Init("claude")
-
-	// Remote handoff with nonexistent target + message body.
-	_, err := c.GC("handoff", "--target", "nonexistent", "subject", "body message")
-	if err == nil {
-		t.Fatal("expected error for remote handoff to nonexistent, got success")
-	}
-}
-
-// --- gc graph (bonus: related command) ---
-
-func TestGraph_EmptyCity_Succeeds(t *testing.T) {
-	c := helpers.NewCity(t, testEnv)
-	c.Init("claude")
-
-	// graph should not crash on an empty city.
-	_, _ = c.GC("graph")
+	t.Run("EmptyCity_Succeeds", func(t *testing.T) {
+		// graph should not crash on an empty city.
+		_, _ = c.GC("graph")
+	})
 }
 
 func TestGraph_NotInitialized_ReturnsError(t *testing.T) {

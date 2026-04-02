@@ -87,44 +87,43 @@ func TestExampleValidate_AllCities_PassValidation(t *testing.T) {
 	}
 }
 
-// TestExamplePacks_Gastown_MaterializesAllPacks verifies that gastown
-// materializes both the gastown and maintenance packs with their expected
-// artifact directories.
-func TestExamplePacks_Gastown_MaterializesAllPacks(t *testing.T) {
-	c := helpers.NewCity(t, testEnv)
-	c.InitFrom(filepath.Join(helpers.ExamplesDir(), "gastown"))
+// TestExamplePacks_PackArtifacts groups tests that verify materialized pack
+// artifacts for specific example cities, sharing one init per city.
+func TestExamplePacks_PackArtifacts(t *testing.T) {
+	t.Run("Gastown", func(t *testing.T) {
+		c := helpers.NewCity(t, testEnv)
+		c.InitFrom(filepath.Join(helpers.ExamplesDir(), "gastown"))
 
-	expected := []string{
-		"packs/gastown/pack.toml",
-		"packs/gastown/prompts",
-		"packs/gastown/formulas",
-		"packs/gastown/scripts",
-		"packs/maintenance/pack.toml",
-		"packs/maintenance/formulas",
-	}
-	for _, rel := range expected {
-		if !c.HasFile(rel) {
-			t.Errorf("missing expected artifact: %s", rel)
+		expected := []string{
+			"packs/gastown/pack.toml",
+			"packs/gastown/prompts",
+			"packs/gastown/formulas",
+			"packs/gastown/scripts",
+			"packs/maintenance/pack.toml",
+			"packs/maintenance/formulas",
 		}
-	}
-}
-
-// TestExamplePacks_Hyperscale_MaterializesPack verifies that hyperscale
-// materializes its pack with prompts and scripts.
-func TestExamplePacks_Hyperscale_MaterializesPack(t *testing.T) {
-	c := helpers.NewCity(t, testEnv)
-	c.InitFrom(filepath.Join(helpers.ExamplesDir(), "hyperscale"))
-
-	expected := []string{
-		"packs/hyperscale/pack.toml",
-		"packs/hyperscale/prompts",
-		"packs/hyperscale/scripts",
-	}
-	for _, rel := range expected {
-		if !c.HasFile(rel) {
-			t.Errorf("missing expected artifact: %s", rel)
+		for _, rel := range expected {
+			if !c.HasFile(rel) {
+				t.Errorf("missing expected artifact: %s", rel)
+			}
 		}
-	}
+	})
+
+	t.Run("Hyperscale", func(t *testing.T) {
+		c := helpers.NewCity(t, testEnv)
+		c.InitFrom(filepath.Join(helpers.ExamplesDir(), "hyperscale"))
+
+		expected := []string{
+			"packs/hyperscale/pack.toml",
+			"packs/hyperscale/prompts",
+			"packs/hyperscale/scripts",
+		}
+		for _, rel := range expected {
+			if !c.HasFile(rel) {
+				t.Errorf("missing expected artifact: %s", rel)
+			}
+		}
+	})
 }
 
 // TestExampleDoctor_AllCities_RunWithoutCrash verifies that gc doctor
