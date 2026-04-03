@@ -225,7 +225,7 @@ func (s *Store) CloseAll(ids []string, metadata map[string]string) (int, error) 
 	return closed, nil
 }
 
-// List returns all beads: script list
+// ListOpen returns all beads: script list
 func (s *Store) ListOpen(status ...string) ([]beads.Bead, error) {
 	args := []string{"list"}
 	if len(status) > 0 && status[0] != "" {

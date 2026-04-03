@@ -305,7 +305,7 @@ func (c *CachingStore) ApplyDepEvent(beadID string, deps []Dep) {
 
 // ── Read methods (cache when live, fallback to backing) ─────────────
 
-// List returns all cached beads, optionally filtered by status.
+// ListOpen returns all cached beads, optionally filtered by status.
 // When fully primed (cacheLive), serves from memory. When partially
 // primed (cachePartial) with a status filter for pre-primed statuses
 // (open, in_progress), serves from the partial cache. Otherwise blocks

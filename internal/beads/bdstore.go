@@ -624,7 +624,7 @@ func (s *BdStore) Delete(id string) error {
 	return nil
 }
 
-// List returns non-closed beads via bd list. Pass a status to filter further.
+// ListOpen returns non-closed beads via bd list. Pass a status to filter further.
 func (s *BdStore) ListOpen(status ...string) ([]Bead, error) {
 	args := []string{"list", "--json", "--limit", "0", "--include-infra"}
 	if len(status) > 0 && status[0] != "" {

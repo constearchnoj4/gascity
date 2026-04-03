@@ -195,7 +195,7 @@ func (m *MemStore) CloseAll(ids []string, metadata map[string]string) (int, erro
 	return closed, nil
 }
 
-// List returns all beads in creation order.
+// ListOpen returns all beads in creation order.
 func (m *MemStore) ListOpen(status ...string) ([]Bead, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

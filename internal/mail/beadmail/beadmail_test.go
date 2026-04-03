@@ -13,7 +13,7 @@ type hiddenMessageStore struct {
 }
 
 func (s hiddenMessageStore) List(_ ...string) ([]beads.Bead, error) {
-	all, err := s.MemStore.ListOpen()
+	all, err := s.ListOpen()
 	if err != nil {
 		return nil, err
 	}
