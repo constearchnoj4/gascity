@@ -122,6 +122,7 @@ func reconcileSessionBeads(
 	readyWaitSet map[string]bool,
 	dt *drainTracker,
 	poolDesired map[string]int,
+	storeQueryPartial bool,
 	workSet map[string]bool,
 	cityName string,
 	it idleTracker,
@@ -176,6 +177,15 @@ func reconcileSessionBeads(
 			// Heal state using provider liveness, not agent membership.
 			healState(session, providerAlive, store, clk)
 			if providerAlive {
+				// When a store query failed (partial results),
+				// skip drain — the session may have work that we
+				// couldn't see due to the transient failure.
+				// Draining would send Ctrl-C and interrupt the
+				// running agent mid-tool-call.
+				if storeQueryPartial {
+					fmt.Fprintf(stdout, "Skipping drain for '%s': store query partial (transient failure)\n", name) //nolint:errcheck
+					continue
+				}
 				reason := "orphaned"
 				if configuredNames[name] {
 					reason = "suspended"
