@@ -368,74 +368,41 @@ includes = ["git@github.com:org/shared-pack.git//packs/base#v1.0"]
 
 
 
-### The gastown and maintainance packs.
+### The Gastown and Maintenance packs
 
-// rather than just some mechanical enumeration, can we (a) describe what each pack does, (why it's included), (b) why you may or may not want to including it
+Gas City ships two packs that work together:
 
+**Gastown** is the orchestration pack — it provides the agents that coordinate and execute work across your city. If you want multi-agent workflows with a coordinator that plans, workers that code, and monitors that watch, Gastown is what gives you that. It defines:
 
-The Gastown pack is the reference implementation. Here's a simplified view:
+- **mayor** (city-scoped) — the coordinator. Plans work, dispatches to workers, tracks progress. Always running.
+- **deacon** (city-scoped) — the patrol executor. Monitors city health, runs periodic checks. Always running.
+- **boot** (city-scoped) — the watchdog. Monitors the deacon itself. Ephemeral — starts fresh each time.
+- **witness** (rig-scoped) — monitors workers within a single rig. One per project.
+- **refinery** (rig-scoped) — processes the merge queue for a rig.
+- **polecat** (rig-scoped) — the transient workers that actually write code. Pools of up to 5 per rig.
 
-```toml
-# packs/gastown/pack.toml
-[pack]
-name = "gastown"
-schema = 1
-includes = ["../maintenance"]
+**Maintenance** is the infrastructure pack — it provides utility agents and operational formulas for housekeeping tasks like orphan sweeps and gate checks. Gastown includes maintenance automatically, so you don't need to reference it separately.
 
-# City-scoped agents (one each for the city)
-[[agent]]
-name = "mayor"           # Coordinator — plans and dispatches
-scope = "city"
+You don't have to use either pack. A city with inline `[[agent]]` entries and no `includes` works fine — that's how the tutorial template starts you off. Packs become valuable when you want a proven orchestration pattern without defining every agent yourself.
 
-[[agent]]
-name = "deacon"          # Patrol executor — monitors health
-scope = "city"
-
-[[agent]]
-name = "boot"            # Watchdog — monitors the deacon
-scope = "city"
-wake_mode = "fresh"
-
-# Rig-scoped agents (one set per registered rig)
-[[agent]]
-name = "witness"         # Worker monitor — per rig
-scope = "rig"
-
-[[agent]]
-name = "refinery"        # Merge queue — per rig
-scope = "rig"
-
-[[agent]]
-name = "polecat"         # Transient workers — pool of up to 5 per rig
-scope = "rig"
-max_active_sessions = 5
-```
-
-A city that includes Gastown gets all of this with two lines:
+A city that includes Gastown gets all of the above with two lines:
 
 ```toml
-# city.toml
 [workspace]
 includes = ["packs/gastown"]
 ```
 
-The maintenance pack (included by Gastown) adds infrastructure agents and operational orders — the housekeeping that runs in the background.
-
-```toml
-# packs/gastown/pack.toml
-[pack]
-includes = ["../maintenance"]
-```
 
 
 
 
+## How Gas City keeps your city running
 
-## Keeping your city healthy and running
+Gas City has two layers of infrastructure working behind the scenes: the *supervisor* and the *controller*.
 
-// maybe we introduce the supervisor here as well. Then this section can become "how gas city works" as effectively an appendix to this chapter.
+The **supervisor** is a machine-wide daemon that manages all your cities. It starts when you first run `gc init` or `gc start` and stays running in the background. It's responsible for starting and stopping city controllers, tracking registration, and restarting cities after a reboot.
 
-When you run `gc start`, the supervisor launches a *controller* for your city. The controller is the background process that keeps everything running. It:
+Each city gets its own **controller** — a background process launched by the supervisor. The controller is what keeps the city alive. It:
 
 - Watches `city.toml` for changes and applies them live
 - Starts missing agent sessions, drains excess ones
@@ -443,7 +410,7 @@ When you run `gc start`, the supervisor launches a *controller* for your city. T
 - Restarts crashed sessions (with backoff)
 - Listens on a Unix socket for commands from the CLI
 
-You don't interact with the controller directly — the `gc` commands talk to it for you. But it's useful to know it exists, because when you edit `city.toml` while the city is running, the controller picks up the changes automatically on its next patrol tick (every 30 seconds by default).
+You don't interact with either directly — the `gc` commands talk to them for you. But it's useful to know they exist, because when you edit `city.toml` while the city is running, the controller picks up the changes automatically on its next patrol tick (every 30 seconds by default).
 
 ### Health checks
 
@@ -486,13 +453,16 @@ $ gc doctor --fix
 | `gc unregister <path>` | Manually unregister a city |
 | `gc doctor` | Run health checks |
 | `gc doctor --fix` | (*attempt automatic repairs*) |
+| `gc sling <agent> <work>` | Dispatch work to an agent |
 | `gc rig add <path>` | Register a project directory as a rig |
 | `gc rig add <path> --name <name>` | (*with explicit name*) |
 | `gc rig list` | List registered rigs |
+| `gc rig status <name>` | Show rig details and agent status |
 | `gc rig suspend <name>` | Suspend all agents in a rig |
 | `gc rig resume <name>` | Resume a suspended rig |
 | `gc rig restart <name>` | Kill and restart all rig sessions |
 | `gc rig remove <name>` | Unregister a rig |
+| `gc rig default <name>` | Set the default rig |
 | `gc pack list` | List configured packs |
 | `gc pack fetch` | Clone or update remote packs |
 
