@@ -129,6 +129,18 @@ func ensureNoStandaloneController(cityPath string) (int, error) {
 func registerCityWithSupervisor(cityPath string, stdout, stderr io.Writer, commandName string, showProgress bool) int {
 	if pid, err := ensureNoStandaloneController(cityPath); err != nil {
 		if errors.Is(err, errControllerAlreadyRunning) {
+			// Debug: show where the controller socket/lock is
+			sockPath := filepath.Join(cityPath, ".gc", "controller.sock")
+			lockPath := filepath.Join(cityPath, ".gc", "controller.lock")
+			sockExists := false
+			if _, serr := os.Stat(sockPath); serr == nil {
+				sockExists = true
+			}
+			lockExists := false
+			if _, lerr := os.Stat(lockPath); lerr == nil {
+				lockExists = true
+			}
+			fmt.Fprintf(stderr, "%s: DEBUG sock=%s exists=%v lock=%s exists=%v\n", commandName, sockPath, sockExists, lockPath, lockExists) //nolint:errcheck
 			if pid != 0 {
 				fmt.Fprintf(stderr, "%s: standalone controller already running for %s (PID %d); stop it before registering with the supervisor\n", commandName, cityPath, pid) //nolint:errcheck // best-effort stderr
 			} else {
