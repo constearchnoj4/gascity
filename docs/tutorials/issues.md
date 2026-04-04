@@ -17,13 +17,22 @@ Issues discovered during tutorial editing. Each heading is an anchor referenced 
 
 **Suggestion:** `gc init` step 8 should block until the city is actually accepting commands.
 
-## init-no-gitignore
+## init-incomplete-gitignore
+<!-- gh:gastownhall/gascity#301 -->
 [← cities.md: What's inside](cities.md#whats-inside)
 
-`gc init` doesn't generate a `.gitignore` for the city root. Users who version their city need to create one manually to exclude `.gc/`, `.beads/`, and `hooks/`.
+`gc init` and `gc rig add` generate an incomplete `.gitignore`. The current generated content is:
 
-**Expected:** `gc init` generates a `.gitignore` that excludes local state.
+```
+.dolt/
+*.db
+.beads-credential-key
+```
 
-**Actual:** No `.gitignore` is created. The `.beads/` directory has its own internal `.gitignore`, but the city root doesn't.
+This leaves the user unclear about what (if anything) from `.beads/` or `.gc/` needs to go into their repo or be copied to make another city. Related to the broader state separation design in [#159](https://github.com/gastownhall/gascity/issues/159).
 
-**Suggestion:** Have `gc init` write a `.gitignore` with `.gc/`, `.beads/`, and `hooks/`.
+**Expected:** `gc init` generates a city-root `.gitignore` that covers `.gc/`, `.beads/`, and `hooks/`.
+
+**Actual:** Only `.dolt/` internals are excluded. Users must manually add the rest.
+
+**Suggestion:** Have `gc init` write a `.gitignore` aligned with the three-category model (definitions, local bindings, managed state).

@@ -39,26 +39,22 @@ That means you can use `gc sling` to dispatch work to an agent right away. The c
 
 ```
 $ cd ~/my-city
-$ gc sling claude "What files are in this directory?"
+$ gc sling claude "Generate hello, world in python in the file ~/hello.py"
 Dispatched gc-1 → claude
 ```
 
 > **Issue:** gc sling on a new city fails to dispatch — [details](issues.md#sling-after-init) · [#286](https://github.com/gastownhall/gascity/issues/286), [#287](https://github.com/gastownhall/gascity/issues/287)
 
-The work is dispatched — the agent picks it up in the background. To see what it's doing, peek at its session:
+The work is dispatched to the agent. In a few moments, the file will be written to your home directory:
 
 ```
-$ gc session peek claude
-[mayor] Looking at the city directory...
-[mayor] I can see city.toml, prompts/, formulas/, scripts/, and packs/.
+$ cat ~/hello.py
+print("Hello, world!")
 ```
 
-The agents chapter goes deep on sessions, peeking, and other ways to interact with agents. For now, the important thing is that a city is ready to use the moment it's created.
-
-## What's inside
+When you ran `gc init`, Gas City populated the new directory to support both you defining what the city is and how it should work, and for Gas City to write out its own state needed to keep the city running.
 
 Your city directory looks like this:
-
 ```
 my-city/
 ├── city.toml           # City definition
@@ -66,24 +62,29 @@ my-city/
 ├── prompts/            # Prompts that initialize agents
 ├── formulas/           # Workflow definitions
 ├── scripts/            # Utility scripts
-├── .gc/                # Local state (gitignored)
-└── .beads/             # Local state (gitignored)
+├── .gc/                # Managed state (gitignored)
+└── .beads/             # Managed state (gitignored)
 ```
 
-There are two categories of files in a city:
+There are three categories of files in a city:
 
-- **Definition** — `city.toml`, `packs/`, `prompts/`, `formulas/`, `scripts/`. The blueprint for what the city is and how it behaves. Shareable, version-controllable — this is what you'd commit to a repo.
-- **Local state** — `.gc/` and `.beads/`. Controller state, event logs, caches, and work items. Machine-local, generated at runtime — not something you'd share or version.
+| Category | Contents | Version? |
+|---|---|---|
+| **Definitions** | `city.toml`*, `packs/`, `prompts/`, `formulas/`, `scripts/` — what the city is and how it behaves | Yes |
+| **Local bindings** | `city.toml`*, `hooks/` — values that attach the city to a specific machine (rig paths, ports, provider hooks) | No |
+| **Managed state** | `.gc/`, `.beads/` — controller state, event logs, caches, and work items produced at runtime | No |
 
-If you're versioning your city (and you should), you'll want to keep local state out of source control:
+*`city.toml` currently contains both definitions and local bindings. See [#159](https://github.com/gastownhall/gascity/issues/159) for the plan to separate them cleanly via `city.local.toml`.
+
+> **Issue:** gc init generates an incomplete .gitignore — [details](issues.md#init-incomplete-gitignore) · [#301](https://github.com/gastownhall/gascity/issues/301)
+
+If you're versioning your city (and you should), you'll want to keep local bindings and managed state out of source control:
 
 ```gitignore
 .gc/
 .beads/
 hooks/
 ```
-
-> **Issue:** `gc init` doesn't generate a `.gitignore` for the city root — [details](issues.md#init-no-gitignore)
 
 ## city.toml
 
