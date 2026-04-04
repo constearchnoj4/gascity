@@ -70,21 +70,23 @@ There are three categories of files in a city:
 
 | Category | Contents | Version? |
 |---|---|---|
-| **Definitions** | `city.toml`*, `packs/`, `prompts/`, `formulas/`, `scripts/` — what the city is and how it behaves | Yes |
-| **Local bindings** | `city.toml`*, `hooks/` — values that attach the city to a specific machine (rig paths, ports, provider hooks) | No |
-| **Managed state** | `.gc/`, `.beads/` — controller state, event logs, caches, and work items produced at runtime | No |
+| **Definitions** | `city.toml`*, `packs/`, `prompts/`, `formulas/`, `scripts/` — the blueprint for what the city is and how it behaves | Yes |
+| **Local bindings** | `city.toml`* —  configuration that wires the city up to the specific machine and directory it's registered in (e.g., paths to project directories, network ports) | No |
+| **Managed state** | `.gc/`, `.beads/` — opaque state that Gas City needs to keep your city running properly | No |
 
 *`city.toml` currently contains both definitions and local bindings. See [#159](https://github.com/gastownhall/gascity/issues/159) for the plan to separate them cleanly via `city.local.toml`.
 
-> **Issue:** gc init generates an incomplete .gitignore — [details](issues.md#init-incomplete-gitignore) · [#301](https://github.com/gastownhall/gascity/issues/301)
 
 If you're versioning your city (and you should), you'll want to keep local bindings and managed state out of source control:
+
 
 ```gitignore
 .gc/
 .beads/
-hooks/
 ```
+> **Issue:** gc init generates an incomplete .gitignore — [details](issues.md#init-incomplete-gitignore) · [#301](https://github.com/gastownhall/gascity/issues/301)
+
+
 
 ## city.toml
 
@@ -92,6 +94,7 @@ This is the city's primary definition file. A minimal city.toml looks like:
 
 ```toml
 [workspace]
+name = "my-city"
 provider = "claude"
 
 [[agent]]
@@ -127,7 +130,7 @@ $ gc sling reviewer "Check the latest PR for security issues"
 Dispatched gc-3 → reviewer
 ```
 
-One request went to Claude, the other to Codex. You didn't have to think about which CLI to invoke, how to pass the prompt, or where the session state lives. Gas City providers simplify doing development with multiple agents.
+One request went to Claude, the other to Codex. Providers remove the need to know CLI to invoke, how to pass the prompt, or where the session state lives. 
 
 The `[[agent]]` entries define agents inline — the agents chapter covers all the definition fields. As things grow further, you'll compose reusable *packs* into the config rather than defining everything inline. Packs are covered later in this chapter.
 
@@ -188,14 +191,14 @@ No side effects executed (--dry-run).
 
 ## Rigs
 
-So far the city has agents but no project code to work on. Your projects are just directories on your filesystem — they exist independently of Gas City, and Gas City doesn't move them, copy them, or contain them. From Gas City's perspective, a project is nothing but a path on disk.
+So far our city has agents but no project code to work on. Your projects are just directories on your filesystem — they exist independently of Gas City, and Gas City doesn't move them, copy them, or contain them. From Gas City's perspective, a project is nothing but a path on disk.
 
 A *rig* is what connects your city to that path. To bring a project into a city, you *rig* it — registering the directory so the city's agents can reach into it, track work against it, and install the hooks that let agents integrate with the project's tooling.
 
 When you rig a project, Gas City creates a rig entry in the city, sets up work tracking for it, installs provider hooks, and — if your city uses packs — stamps rig-scoped agents for that project.
 
 ```
-$ gc rig add /path/to/my-app
+$ gc rig add ~/path/to/my-app
 Added rig 'my-app' to city 'my-city'
   Prefix: ma
   Beads:  initialized
@@ -205,7 +208,7 @@ Added rig 'my-app' to city 'my-city'
 Gas City derives the rig name from the directory basename and creates a short *prefix* for bead IDs. You can override the name:
 
 ```
-$ gc rig add /path/to/my-app --name frontend
+$ gc rig add ~/path/to/my-app --name frontend
 ```
 
 After adding a rig, city.toml has a new `[[rigs]]` entry:
@@ -213,12 +216,12 @@ After adding a rig, city.toml has a new `[[rigs]]` entry:
 ```toml
 [[rigs]]
 name = "my-app"
-path = "/path/to/my-app"
+path = "/Users/you/path/to/my-app"
 ```
 
 ### Rig context
 
-Gas City automatically figures out which rig you're working in based on your current directory. If you're in `/path/to/my-app/src/main`, it knows you're in the `my-app` rig. Commands like `gc sling` use this to resolve targets:
+Gas City automatically figures out which rig you're working in based on your current directory. If you're in `~/path/to/my-app/src/main`, it knows you're in the `my-app` rig. Commands like `gc sling` use this to resolve targets:
 
 ```
 $ cd /path/to/my-app/src
@@ -228,6 +231,7 @@ $ gc sling worker BL-42
 
 ### Managing rigs
 
+Like cities, rigs are managed by the supervisor and can be enumerated using `gc rig list`:
 ```
 $ gc rig list
 NAME       PATH                    PREFIX  SUSPENDED
@@ -235,35 +239,46 @@ my-app     /path/to/my-app         ma      no
 backend    /path/to/backend        ba      no
 ```
 
-Suspend a rig to stop all its agents without removing it — useful when you're doing infrastructure work and don't want agents interfering:
+Rigs can be suspened and resumed when you are doing potentially disruptive work that you don't want agents interfering wiht.
 
 ```
+# pause all agent work on the project my-app
 $ gc rig suspend my-app
 Suspended rig 'my-app'
 
+# go wild while the agents are at
+
+# now awaken our sleeping agents.
 $ gc rig resume my-app
 Resumed rig 'my-app'
 ```
 
-Remove a rig when you're done with it:
+Because rigs are managed by the supervisor, removing their entry from your TOML file doesn't actually make the rig go away. To remove a rig, use `gc rig remove`:
 
 ```
 $ gc rig remove my-app
 Removed rig 'my-app' from city 'my-city'
 ```
 
-This removes the `[[rigs]]` entry from `city.toml` and cleans up the registry. The rig's directory is untouched — Gas City never modifies your project files.
+This removes the `[[rigs]]` entry from `city.toml` and cleans up the internal registry that the supervisor uses to manage the system. 
+
+When you remove a rig, you are just removing the binding from this city to the rig's directory. The rig's directory itself is untouched.
 
 > **Managed fields:** Some fields in `city.toml` are written by `gc` commands and shouldn't be edited by hand. The `[[rigs]]` entries are the main example — `gc rig add` writes them and sets up the associated work tracking and hooks. When in doubt, use the CLI.
 
 ## Packs
 
-A *city* is a directory with a `city.toml` at the root.
-A *pack* is a directory with a `pack.toml` at the root.
+In Gas City, a *pack* is a reusable set of definitions that can be reused by multiple cities. 
+
+A *city* definition is a directory with a `city.toml` at the root.
+
+A *pack* definition is a directory with a `pack.toml` at the root.
 
 Both define agents, formulas, prompts, scripts, and other assets. The difference: a city is a running workspace you start and stop. A pack is a reusable module that gets composed into one or more cities.
 
-If you used `gc init` with the gastown template, you're already using packs — everything from the mayor coordinator to the polecat workers is pure configuration in a pack. Gas City doesn't hardcode any behavior into the binary. Packs are how it ships defaults.
+If you used `gc init` to create your city, you already have two packs available to you: `gastown` and `maintenance`, both in the city's `packs/` directory. Gas City bakes as little behavior into the binary as possible. Packs are how it ships defaults.
+
+> **Issue:** Fresh city has defaults in both packs and top-level directories — [details](issues.md#pack-vs-toplevel-defaults)
 
 ### Composing packs into a city
 
@@ -291,6 +306,17 @@ You can set a default so new rigs get packs automatically:
 [workspace]
 default_rig_includes = ["packs/gastown"]
 ```
+Packs can also include other packs:
+
+```toml
+# gastown/pack.toml
+[pack]
+name = "gastown"
+schema = 1
+includes = ["../maintenance"]
+```
+
+This is how Gastown brings in the maintenance pack — which provides infrastructure agents and operational orders. The include is resolved relative to the pack's own directory, and includes are recursive with cycle detection.
 
 ### The composition pipeline
 
@@ -306,7 +332,46 @@ When Gas City loads the city definition, packs are processed through a specific 
 
 The order matters because each stage can modify what the previous stage produced. City patches can target pack-provided agents. Rig overrides (covered in the agents chapter) customize pack-stamped agents for a specific project. Globals append to everything at the end.
 
-### A real pack: Gastown
+
+### Where packs live
+
+Packs can come from three places:
+
+**Embedded** — inside the city directory. This is the most common setup. The conventional location is `packs/`:
+
+```
+my-city/
+├── city.toml
+├── packs/
+│   ├── gastown/
+│   │   └── pack.toml
+│   └── maintenance/
+│       └── pack.toml
+└── ...
+```
+
+**External directory** — a path outside the city, useful for sharing a pack across multiple cities on the same machine:
+
+```toml
+[workspace]
+includes = ["/Users/shared/packs/common"]
+```
+
+**Remote git** — fetched on first access and cached in `.gc/cache/includes/`:
+
+```toml
+[workspace]
+includes = ["git@github.com:org/shared-pack.git//packs/base#v1.0"]
+```
+
+`packs/` is just a convention — Gas City doesn't auto-load everything in there. Only packs explicitly referenced from `includes` participate in the assembled definition.
+
+
+
+### The gastown and maintainance packs.
+
+// rather than just some mechanical enumeration, can we (a) describe what each pack does, (why it's included), (b) why you may or may not want to including it
+
 
 The Gastown pack is the reference implementation. Here's a simplified view:
 
@@ -349,62 +414,38 @@ max_active_sessions = 5
 A city that includes Gastown gets all of this with two lines:
 
 ```toml
+# city.toml
 [workspace]
 includes = ["packs/gastown"]
 ```
 
 The maintenance pack (included by Gastown) adds infrastructure agents and operational orders — the housekeeping that runs in the background.
 
-### Where packs live
-
-Packs can come from three places:
-
-**Embedded** — inside the city directory. This is the most common setup. The conventional location is `packs/`:
-
-```
-my-city/
-├── city.toml
-├── packs/
-│   ├── gastown/
-│   │   └── pack.toml
-│   └── maintenance/
-│       └── pack.toml
-└── ...
-```
-
-**External directory** — a path outside the city, useful for sharing a pack across multiple cities on the same machine:
-
 ```toml
-[workspace]
-includes = ["/Users/shared/packs/common"]
-```
-
-**Remote git** — fetched on first access and cached in `.gc/cache/includes/`:
-
-```toml
-[workspace]
-includes = ["git@github.com:org/shared-pack.git//packs/base#v1.0"]
-```
-
-`packs/` is just a convention — Gas City doesn't auto-load everything in there. Only packs explicitly referenced from `includes` participate in the assembled definition.
-
-### Pack includes
-
-Packs can include other packs:
-
-```toml
-# gastown/pack.toml
+# packs/gastown/pack.toml
 [pack]
-name = "gastown"
-schema = 1
 includes = ["../maintenance"]
 ```
 
-This is how Gastown brings in the maintenance pack — which provides infrastructure agents and operational orders. The include is resolved relative to the pack's own directory, and includes are recursive with cycle detection.
 
----
 
-## Health checks
+
+
+## Keeping your city healthy and running
+
+// maybe we introduce the supervisor here as well. Then this section can become "how gas city works" as effectively an appendix to this chapter.
+
+When you run `gc start`, the supervisor launches a *controller* for your city. The controller is the background process that keeps everything running. It:
+
+- Watches `city.toml` for changes and applies them live
+- Starts missing agent sessions, drains excess ones
+- Enforces idle timeouts and pool scaling
+- Restarts crashed sessions (with backoff)
+- Listens on a Unix socket for commands from the CLI
+
+You don't interact with the controller directly — the `gc` commands talk to it for you. But it's useful to know it exists, because when you edit `city.toml` while the city is running, the controller picks up the changes automatically on its next patrol tick (every 30 seconds by default).
+
+### Health checks
 
 When something isn't working right, `gc doctor` runs a suite of diagnostics:
 
@@ -427,17 +468,6 @@ Add `--fix` to attempt automatic repairs:
 $ gc doctor --fix
 ```
 
-## The controller
-
-When you run `gc start`, the supervisor launches a *controller* for your city. The controller is the background process that keeps everything running. It:
-
-- Watches `city.toml` for changes and applies them live
-- Starts missing agent sessions, drains excess ones
-- Enforces idle timeouts and pool scaling
-- Restarts crashed sessions (with backoff)
-- Listens on a Unix socket for commands from the CLI
-
-You don't interact with the controller directly — the `gc` commands talk to it for you. But it's useful to know it exists, because when you edit `city.toml` while the city is running, the controller picks up the changes automatically on its next patrol tick (every 30 seconds by default).
 
 ## Command reference
 

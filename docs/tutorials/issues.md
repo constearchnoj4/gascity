@@ -36,3 +36,12 @@ This leaves the user unclear about what (if anything) from `.beads/` or `.gc/` n
 **Actual:** Only `.dolt/` internals are excluded. Users must manually add the rest.
 
 **Suggestion:** Have `gc init` write a `.gitignore` aligned with the three-category model (definitions, local bindings, managed state).
+
+## pack-vs-toplevel-defaults
+[← cities.md: Packs](cities.md#packs)
+
+A fresh city created by `gc init` has default content in both the top-level directories (`prompts/`, `formulas/`, `scripts/`) and in `packs/gastown/` and `packs/maintenance/`. It's unclear what the principle is for which defaults live at the top level vs. inside a pack.
+
+**Question:** Is there a design principle governing what goes in the city's top-level directories vs. the gastown or maintenance packs? The tutorial currently says "packs are how Gas City ships defaults" but that's only partially true — a lot of defaults live outside of packs.
+
+**Suggestion:** Either clarify the principle so the tutorial can explain it, or consolidate defaults into packs so the statement is accurate.
