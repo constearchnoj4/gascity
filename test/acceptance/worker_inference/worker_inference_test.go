@@ -1136,6 +1136,17 @@ func runFreshManualSessionTurn(t *testing.T, provider, templateName, alias, prom
 			"init_out":   strings.TrimSpace(initOut),
 		}, nil, "spawn", fmt.Errorf("installing worker inference probe agent: %w", err)
 	}
+	if err := installLiveProviderCommandOverride(c.Dir, liveSetup.Provider, liveSetup.BinaryPath, liveSetup.ProcessNames); err != nil {
+		return inferenceSessionRun{}, map[string]string{
+			"city_dir":    c.Dir,
+			"binary_path": liveSetup.BinaryPath,
+			"provider":    provider,
+			"template":    templateName,
+			"alias":       alias,
+			"output_rel":  outputRel,
+			"init_out":    strings.TrimSpace(initOut),
+		}, nil, "spawn", fmt.Errorf("installing live provider command override: %w", err)
+	}
 	_, _ = runGCWithTimeout(liveShutdownTimeout, liveEnv, "", "supervisor", "stop")
 	_, _ = runGCWithTimeout(liveShutdownTimeout, liveEnv, c.Dir, "stop", c.Dir)
 	_, _ = waitForManagedDoltStopped(c.Dir, liveStopBarrierTimeout)

@@ -34,6 +34,13 @@ type providerSetup struct {
 	SetupError   string
 }
 
+type providerLauncher struct {
+	BinaryPath   string
+	ProcessNames []string
+	AuthSource   string
+	ManagesAuth  bool
+}
+
 func TestMain(m *testing.M) {
 	tmpRoot, err := acceptanceTempRoot()
 	if err != nil {
@@ -103,35 +110,163 @@ func prepareProviderSetup(gcHome, workRoot string, env *helpers.Env) providerSet
 		setup.SetupError = "bd not found in PATH"
 		return setup
 	}
-	binaryPath, err := resolveProviderBinary(workRoot, env, setup.Provider)
+	launcher, err := resolveProviderLauncher(workRoot, env, setup.Provider)
 	if err != nil {
 		setup.SetupError = fmt.Sprintf("%s CLI not found in PATH", setup.Provider)
 		return setup
 	}
-	setup.BinaryPath = binaryPath
-	setup.ProcessNames = providerProcessNames(setup.Provider, setup.BinaryPath)
+	setup.BinaryPath = launcher.BinaryPath
+	setup.ProcessNames = launcher.ProcessNames
+	if launcher.ManagesAuth {
+		setup.AuthSource = launcher.AuthSource
+		return setup
+	}
 	authSource, err := stageProviderAuth(gcHome, env, setup.Profile)
 	if err != nil {
 		setup.SetupError = err.Error()
 		return setup
 	}
-	setup.AuthSource = authSource
+	setup.AuthSource = combineAuthSource(launcher.AuthSource, authSource)
 	return setup
 }
 
-func resolveProviderBinary(workRoot string, env *helpers.Env, provider string) (string, error) {
+func resolveProviderLauncher(workRoot string, env *helpers.Env, provider string) (providerLauncher, error) {
 	switch {
 	case strings.TrimSpace(os.Getenv(workerInferenceProviderEnv(provider, "BIN"))) != "":
-		return installProviderBinaryOverride(workRoot, env, provider, strings.TrimSpace(os.Getenv(workerInferenceProviderEnv(provider, "BIN"))))
+		target, err := resolveBinaryOverrideTarget(env.Get("PATH"), strings.TrimSpace(os.Getenv(workerInferenceProviderEnv(provider, "BIN"))))
+		if err != nil {
+			return providerLauncher{}, err
+		}
+		binaryPath, err := installProviderBinaryOverride(workRoot, env, provider, strings.TrimSpace(os.Getenv(workerInferenceProviderEnv(provider, "BIN"))))
+		if err != nil {
+			return providerLauncher{}, err
+		}
+		managedAuth, authSource := providerManagedAuth(provider, target)
+		return providerLauncher{
+			BinaryPath:   binaryPath,
+			ProcessNames: providerProcessNames(provider, binaryPath),
+			AuthSource:   authSource,
+			ManagesAuth:  managedAuth,
+		}, nil
 	case strings.TrimSpace(os.Getenv(workerInferenceProviderEnv(provider, "SHELL_COMMAND"))) != "":
-		return installProviderShellOverride(workRoot, env, provider, strings.TrimSpace(os.Getenv(workerInferenceProviderEnv(provider, "SHELL_COMMAND"))))
+		return resolveProviderShellLauncher(workRoot, env, provider, strings.TrimSpace(os.Getenv(workerInferenceProviderEnv(provider, "SHELL_COMMAND"))))
 	default:
-		return lookPathInEnvPath(env.Get("PATH"), provider)
+		return resolveDefaultProviderLauncher(workRoot, env, provider)
 	}
+}
+
+func resolveProviderShellLauncher(workRoot string, env *helpers.Env, provider, command string) (providerLauncher, error) {
+	binaryPath, err := installProviderShellOverride(workRoot, env, provider, command)
+	if err != nil {
+		return providerLauncher{}, err
+	}
+	managedAuth, authSource := providerManagedAuth(provider, "")
+	return providerLauncher{
+		BinaryPath:   binaryPath,
+		ProcessNames: providerProcessNames(provider, binaryPath),
+		AuthSource:   authSource,
+		ManagesAuth:  managedAuth,
+	}, nil
+}
+
+func resolveDefaultProviderLauncher(workRoot string, env *helpers.Env, provider string) (providerLauncher, error) {
+	binaryPath, err := lookPathInEnvPath(env.Get("PATH"), provider)
+	if err != nil {
+		return providerLauncher{}, err
+	}
+	managedAuth, authSource := providerManagedAuth(provider, binaryPath)
+	return providerLauncher{
+		BinaryPath:   binaryPath,
+		ProcessNames: providerProcessNames(provider, binaryPath),
+		AuthSource:   authSource,
+		ManagesAuth:  managedAuth,
+	}, nil
 }
 
 func workerInferenceProviderEnv(provider, suffix string) string {
 	return "GC_WORKER_INFERENCE_" + strings.ToUpper(strings.TrimSpace(provider)) + "_" + strings.TrimSpace(suffix)
+}
+
+func resolveBinaryOverrideTarget(pathEnv, target string) (string, error) {
+	resolved := strings.TrimSpace(target)
+	if resolved == "" {
+		return "", fmt.Errorf("override binary is empty")
+	}
+	if filepath.IsAbs(resolved) {
+		return resolved, nil
+	}
+	return lookPathInEnvPath(pathEnv, resolved)
+}
+
+func providerManagedAuth(provider, binaryPath string) (bool, string) {
+	envKey := workerInferenceProviderEnv(provider, "MANAGED_AUTH")
+	if managed, ok := boolEnv(envKey); ok {
+		if managed {
+			return true, "env:" + envKey
+		}
+		return false, ""
+	}
+	if looksLikeManagedAuthWrapper(provider, binaryPath) {
+		return true, "launcher:path-wrapper"
+	}
+	return false, ""
+}
+
+func boolEnv(key string) (bool, bool) {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(key))) {
+	case "1", "true", "yes", "on":
+		return true, true
+	case "0", "false", "no", "off":
+		return false, true
+	default:
+		return false, false
+	}
+}
+
+func looksLikeManagedAuthWrapper(provider, binaryPath string) bool {
+	resolved := strings.TrimSpace(binaryPath)
+	if resolved == "" {
+		return false
+	}
+	if target, err := filepath.EvalSymlinks(resolved); err == nil {
+		resolved = target
+	}
+	normalized := filepath.ToSlash(strings.ToLower(resolved))
+	if pathLooksLikeRawProviderCLI(provider, normalized) {
+		return false
+	}
+	line, ok := readShebangLine(resolved)
+	if !ok {
+		return false
+	}
+	return strings.HasPrefix(line, "#!")
+}
+
+func pathLooksLikeRawProviderCLI(provider, normalizedPath string) bool {
+	switch provider {
+	case "claude":
+		return strings.Contains(normalizedPath, "/.local/share/claude/versions/")
+	case "codex":
+		return strings.Contains(normalizedPath, "/@openai/codex/") || strings.Contains(normalizedPath, "/.bun/bin/codex")
+	case "gemini":
+		return strings.Contains(normalizedPath, "/@google/gemini-cli/") || strings.Contains(normalizedPath, "/.bun/bin/gemini")
+	default:
+		return false
+	}
+}
+
+func readShebangLine(path string) (string, bool) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", false
+	}
+	defer file.Close()
+
+	line, err := bufio.NewReader(file).ReadString('\n')
+	if err != nil && err != io.EOF {
+		return "", false
+	}
+	return strings.TrimSpace(line), true
 }
 
 func installProviderBinaryOverride(workRoot string, env *helpers.Env, provider, target string) (string, error) {
@@ -247,6 +382,10 @@ func providerOverrideProcessNames(provider string) []string {
 }
 
 func providerProcessNames(provider, binaryPath string) []string {
+	return collectProviderProcessNames(provider, []string{binaryPath}, nil)
+}
+
+func collectProviderProcessNames(provider string, binaryPaths, extraNames []string) []string {
 	names := make([]string, 0, 4)
 	seen := make(map[string]struct{}, 4)
 	add := func(raw string) {
@@ -264,8 +403,13 @@ func providerProcessNames(provider, binaryPath string) []string {
 		add(name)
 	}
 	add(provider)
-	for _, name := range inferredWrapperProcessNames(binaryPath) {
+	for _, name := range extraNames {
 		add(name)
+	}
+	for _, binaryPath := range binaryPaths {
+		for _, name := range inferredWrapperProcessNames(binaryPath) {
+			add(name)
+		}
 	}
 	if len(names) == 0 {
 		return nil

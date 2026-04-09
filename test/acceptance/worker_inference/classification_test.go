@@ -121,6 +121,55 @@ func TestProviderProcessNamesPreservesExplicitOverridesBeforeInference(t *testin
 	require.Equal(t, []string{"aimux", "codex", "node"}, providerProcessNames("codex", path))
 }
 
+func TestLooksLikeManagedAuthWrapperDistinguishesRawBundledCLIFromWrapper(t *testing.T) {
+	shellPath, err := exec.LookPath("sh")
+	require.NoError(t, err)
+
+	wrapperPath := filepath.Join(t.TempDir(), "codex")
+	require.NoError(t, os.WriteFile(wrapperPath, []byte("#!"+shellPath+"\nexit 0\n"), 0o755))
+	require.True(t, looksLikeManagedAuthWrapper("codex", wrapperPath))
+
+	rawPath := filepath.Join(t.TempDir(), "node_modules", "@openai", "codex", "bin", "codex.js")
+	require.NoError(t, os.MkdirAll(filepath.Dir(rawPath), 0o755))
+	require.NoError(t, os.WriteFile(rawPath, []byte("#!/usr/bin/env node\nconsole.log('hi')\n"), 0o755))
+	require.False(t, looksLikeManagedAuthWrapper("codex", rawPath))
+}
+
+func TestPrepareProviderSetupSkipsAuthStageForManagedPathWrapper(t *testing.T) {
+	shellPath, err := exec.LookPath("sh")
+	require.NoError(t, err)
+
+	workRoot := t.TempDir()
+	gcHome := t.TempDir()
+	runtimeDir := t.TempDir()
+	env := helpers.NewEnv("", gcHome, runtimeDir)
+
+	binDir := t.TempDir()
+	wrapperPath := filepath.Join(binDir, "codex")
+	require.NoError(t, os.WriteFile(wrapperPath, []byte("#!"+shellPath+"\nexit 0\n"), 0o755))
+	env.With("PATH", binDir)
+
+	t.Setenv("PROFILE", string(workerpkg.ProfileCodexTmuxCLI))
+	setup := prepareProviderSetup(gcHome, workRoot, env)
+	require.Empty(t, setup.SetupError)
+	require.Equal(t, "codex", setup.Provider)
+	require.Equal(t, wrapperPath, setup.BinaryPath)
+	require.Equal(t, "launcher:path-wrapper", setup.AuthSource)
+}
+
+func TestResolveProviderLauncherUsesManagedAuthEnvForShellCommandOverride(t *testing.T) {
+	workRoot := t.TempDir()
+	gcHome := t.TempDir()
+	runtimeDir := t.TempDir()
+	env := helpers.NewEnv("", gcHome, runtimeDir)
+
+	t.Setenv("GC_WORKER_INFERENCE_CODEX_MANAGED_AUTH", "1")
+	launcher, err := resolveProviderShellLauncher(workRoot, env, "codex", "printf wrapper")
+	require.NoError(t, err)
+	require.True(t, launcher.ManagesAuth)
+	require.Equal(t, "env:GC_WORKER_INFERENCE_CODEX_MANAGED_AUTH", launcher.AuthSource)
+}
+
 func TestSelectSessionMatchPrefersExpectedRunningSession(t *testing.T) {
 	sessions := []sessionJSON{
 		{ID: "older", Alias: "probe", State: "asleep", SessionName: "probe-old"},
