@@ -7,7 +7,8 @@
 // Assertions are loose (eventual consistency) because model behavior is
 // non-deterministic.
 //
-// Requires: gc binary, bd binary, tmux, dolt, ANTHROPIC_API_KEY (or OAuth).
+// Requires: gc binary, bd binary, tmux, dolt, Synthetic/Anthropic env
+// credentials (ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN), or Claude OAuth.
 // Expected duration: ~5 min per scenario.
 // Trigger: manual (make test-acceptance-c), then nightly.
 package tierc_test
@@ -31,10 +32,13 @@ var testEnvC *helpers.Env
 
 func TestMain(m *testing.M) {
 	// Tier C needs real inference. Accept either:
-	// 1. ANTHROPIC_API_KEY env var (CI mode)
+	// 1. ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN env var (CI mode)
 	// 2. GC_TIERC_FORCE=1 env var (local OAuth mode — user asserts Claude is authed)
 	// 3. Detect OAuth: check if ~/.claude/ exists with credentials
-	apiKey := os.Getenv("ANTHROPIC_API_KEY")
+	apiKey := firstNonEmpty(
+		strings.TrimSpace(os.Getenv("ANTHROPIC_API_KEY")),
+		strings.TrimSpace(os.Getenv("ANTHROPIC_AUTH_TOKEN")),
+	)
 	forceRun := os.Getenv("GC_TIERC_FORCE") == "1"
 	hasOAuth := oauthCredentialsExist()
 
@@ -115,9 +119,26 @@ func TestMain(m *testing.M) {
 	testEnvC = helpers.NewEnv(gcBinary, gcHome, runtimeDir).
 		Without("GC_SESSION"). // use real tmux, not subprocess
 		Without("GC_BEADS").   // use real bd (dolt-backed) provider
-		Without("GC_DOLT").    // let gc manage dolt (don't skip it)
-		With("ANTHROPIC_API_KEY", apiKey).
-		With("DOLT_ROOT_PATH", gcHome) // dolt reads config from $DOLT_ROOT_PATH/.dolt/
+		Without("GC_DOLT")     // let gc manage dolt (don't skip it)
+
+	if apiKey != "" {
+		testEnvC = testEnvC.With("ANTHROPIC_API_KEY", apiKey)
+	}
+	for _, key := range []string{
+		"ANTHROPIC_AUTH_TOKEN",
+		"ANTHROPIC_BASE_URL",
+		"ANTHROPIC_DEFAULT_HAIKU_MODEL",
+		"ANTHROPIC_DEFAULT_SONNET_MODEL",
+		"ANTHROPIC_DEFAULT_OPUS_MODEL",
+		"CLAUDE_CODE_SUBAGENT_MODEL",
+		"CLAUDE_CODE_EFFORT_LEVEL",
+		"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
+	} {
+		if v := strings.TrimSpace(os.Getenv(key)); v != "" {
+			testEnvC = testEnvC.With(key, v)
+		}
+	}
+	testEnvC = testEnvC.With("DOLT_ROOT_PATH", gcHome) // dolt reads config from $DOLT_ROOT_PATH/.dolt/
 
 	// Ensure tmux is available.
 	if _, err := exec.LookPath("tmux"); err != nil {
@@ -496,6 +517,15 @@ func oauthCredentialsExist() bool {
 		}
 	}
 	return false
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 func stageClaudeOAuth(realHome, gcHome string) error {
