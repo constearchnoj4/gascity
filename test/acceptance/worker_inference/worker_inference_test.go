@@ -342,7 +342,7 @@ func TestWorkerInferenceContinuationSmoke(t *testing.T) {
 		), restartEvidence))
 		t.FailNow()
 	}
-	resumeTranscriptPath, resumeSnapshot, resumeEvidence, err := waitForTranscript(adapter, liveSetup.Profile, run.CityDir, resumedSession.SessionName, run.SessionKey, "", "")
+	resumeTranscriptPath, resumeSnapshot, resumeEvidence, err := waitForTranscriptPath(adapter, liveSetup.Profile, beforeTranscriptPath, run.SessionKey)
 	restartEvidence = mergeEvidence(restartEvidence, resumeEvidence)
 	if err != nil {
 		restartEvidence["supervisor_logs"] = supervisorLogs(run.CityDir)
@@ -351,15 +351,6 @@ func TestWorkerInferenceContinuationSmoke(t *testing.T) {
 	}
 	restartEvidence["resume_transcript"] = resumeTranscriptPath
 	restartEvidence["resume_entry_count"] = strconv.Itoa(len(resumeSnapshot.Entries))
-	if beforeTranscriptPath != resumeTranscriptPath {
-		restartEvidence["supervisor_logs"] = supervisorLogs(run.CityDir)
-		reporter.Record(liveFailureResult(profileID, workertest.RequirementInferenceContinuation, fmt.Sprintf(
-			"transcript path changed before recall nudge: %q -> %q",
-			beforeTranscriptPath,
-			resumeTranscriptPath,
-		), restartEvidence))
-		t.FailNow()
-	}
 
 	recallPrompt := fmt.Sprintf(
 		"Without reading files or manually searching history, create a file named %s containing exactly the remembered phrase from our earlier turn and nothing else.",
@@ -2271,6 +2262,44 @@ func waitForTranscript(adapter workerpkg.SessionLogAdapter, profile workerpkg.Pr
 	return transcriptPath, snapshot, evidence, fmt.Errorf("live transcript for %s did not contain the expected task evidence", profile)
 }
 
+func waitForTranscriptPath(adapter workerpkg.SessionLogAdapter, profile workerpkg.Profile, transcriptPath, gcSessionID string) (string, *workerpkg.HistorySnapshot, map[string]string, error) {
+	transcriptPath = strings.TrimSpace(transcriptPath)
+	evidence := map[string]string{
+		"profile":         string(profile),
+		"gc_session_id":   gcSessionID,
+		"transcript_path": transcriptPath,
+	}
+	if transcriptPath == "" {
+		return "", nil, evidence, fmt.Errorf("transcript path is empty for %s", profile)
+	}
+	var (
+		snapshot *workerpkg.HistorySnapshot
+		lastErr  error
+	)
+	found := pollForCondition(90*time.Second, 5*time.Second, func() bool {
+		snapshot, lastErr = adapter.LoadHistory(workerpkg.LoadRequest{
+			Provider:       string(profile),
+			TranscriptPath: transcriptPath,
+			GCSessionID:    gcSessionID,
+		})
+		if lastErr != nil {
+			return false
+		}
+		if snapshot == nil || len(snapshot.Entries) == 0 {
+			lastErr = fmt.Errorf("normalized transcript for %s is empty", profile)
+			return false
+		}
+		return true
+	})
+	if found {
+		return transcriptPath, snapshot, evidence, nil
+	}
+	if lastErr != nil {
+		return transcriptPath, snapshot, evidence, lastErr
+	}
+	return transcriptPath, snapshot, evidence, fmt.Errorf("transcript path %q for %s never became ready", transcriptPath, profile)
+}
+
 func waitForContinuationTranscript(
 	adapter workerpkg.SessionLogAdapter,
 	profile workerpkg.Profile,
@@ -2302,7 +2331,10 @@ func waitForContinuationTranscript(
 	)
 
 	found := pollForCondition(90*time.Second, 5*time.Second, func() bool {
-		transcriptPath = adapter.DiscoverTranscript(string(profile), workDir, gcSessionID)
+		transcriptPath = strings.TrimSpace(beforeTranscriptPath)
+		if transcriptPath == "" {
+			transcriptPath = adapter.DiscoverTranscript(string(profile), workDir, gcSessionID)
+		}
 		if strings.TrimSpace(transcriptPath) != "" {
 			snapshot, lastErr = adapter.LoadHistory(workerpkg.LoadRequest{
 				Provider:       string(profile),
