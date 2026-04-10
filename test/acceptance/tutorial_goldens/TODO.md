@@ -18,6 +18,10 @@ tutorial prose are merged together.
   - use the actual `session_name`/`TARGET` shown by `gc session list`.
 - Tutorial 03: page driver seeds additional `my-api` / `helper` / `worker`
   prerequisite state that the canonical prose assumes but does not establish.
+- Tutorial 03: after the hidden helper/worker/reviewer config append, the page
+  driver currently forces a `gc restart` before seeding `helper`/`hal` because
+  the live controller does not pick up that hidden config mutation quickly
+  enough to keep those fresh manual sessions from being orphaned.
 - Tutorial 03: the Sleep and wake workaround temporarily switches mayor from
   `mode = "always"` to `mode = "on_demand"`, reduces `idle_timeout` from `1h`
   to `5s`, waits for the controller to acknowledge the mode flip, explicitly

@@ -22,7 +22,7 @@ func TestTutorial03Sessions(t *testing.T) {
 	mustMkdirAll(t, myProject)
 	mustMkdirAll(t, myAPI)
 
-	out, err := ws.runShell("gc init ~/my-city --provider claude", "")
+	out, err := ws.runShell("gc init ~/my-city --provider claude --skip-provider-readiness", "")
 	if err != nil {
 		t.Fatalf("seed city init: %v\n%s", err, out)
 	}
@@ -58,6 +58,18 @@ prompt_template = "prompts/reviewer.md"
 		startOut, startErr := ws.runShell("gc start ~/my-city", "")
 		if startErr != nil {
 			t.Fatalf("seed city start: %v\n%s", startErr, startOut)
+		}
+	}
+
+	statusOut, statusErr := ws.runShell("gc status", "")
+	if statusErr != nil {
+		t.Fatalf("seed city status: %v\n%s", statusErr, statusOut)
+	}
+	if !strings.Contains(statusOut, "helper") || !strings.Contains(statusOut, "worker") || !strings.Contains(statusOut, "reviewer") {
+		ws.noteWarning("tutorial 03 continuity workaround: hidden helper/worker/reviewer config append does not land synchronously in the live controller, so the page driver forces a restart before seeding helper/hal")
+		restartOut, restartErr := ws.runShell("gc restart", "")
+		if restartErr != nil {
+			t.Fatalf("seed city restart after hidden config append: %v\n%s", restartErr, restartOut)
 		}
 	}
 

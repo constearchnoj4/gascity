@@ -273,6 +273,16 @@ func (cr *CityRuntime) run(ctx context.Context) {
 	startupTrace := cr.beginTraceCycle("startup", "initial_reconcile", sessionBeads)
 	result := cr.buildDesiredState(sessionBeads, startupTrace)
 	sessionBeads = cr.syncBeadsAndUpdateIndex(result.State, sessionBeads)
+	result = refreshDesiredStateWithSessionBeads(
+		result,
+		cr.cityName,
+		cr.cityPath,
+		cr.cfg,
+		cr.sp,
+		cr.cityBeadStore(),
+		sessionBeads,
+		cr.stderr,
+	)
 	if ctx.Err() != nil {
 		if startupTrace != nil {
 			startupTrace.end(TraceCompletionAborted, traceRecordPayload{"phase": "startup"})
@@ -394,6 +404,16 @@ func (cr *CityRuntime) tick(
 	// stamped on adopted beads). The CachingStore has the updated data
 	// from SetMetadataBatch write-through.
 	sessionBeads = cr.loadSessionBeadSnapshot()
+	result = refreshDesiredStateWithSessionBeads(
+		result,
+		cr.cityName,
+		cr.cityPath,
+		cr.cfg,
+		cr.sp,
+		cr.cityBeadStore(),
+		sessionBeads,
+		cr.stderr,
+	)
 
 	// Bead-driven reconciliation (requires bead store / drain tracker).
 	if cr.sessionDrains != nil {
