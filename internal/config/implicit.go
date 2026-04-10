@@ -1,7 +1,6 @@
 package config
 
 import (
-	"crypto/sha256"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -95,6 +94,5 @@ func GlobalRepoCachePath(gcHome, source, commit string) string {
 
 // GlobalRepoCacheDirName returns the user-global cache directory name for a source+commit pair.
 func GlobalRepoCacheDirName(source, commit string) string {
-	sum := sha256.Sum256([]byte(source + commit))
-	return fmt.Sprintf("%x", sum[:])
+	return RepoCacheKey(source, commit)
 }

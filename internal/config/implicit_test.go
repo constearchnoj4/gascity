@@ -160,3 +160,12 @@ source = "./packs/explicit-import"
 		t.Fatalf("prov.Imports[import] should not be marked implicit when city defines it")
 	}
 }
+
+func TestGlobalRepoCacheDirNameUsesCanonicalRepoCacheKey(t *testing.T) {
+	source := "file:///tmp/repo.git//packs/base"
+	commit := "abc123"
+
+	if got, want := GlobalRepoCacheDirName(source, commit), RepoCacheKey(source, commit); got != want {
+		t.Fatalf("GlobalRepoCacheDirName(%q, %q) = %q, want %q", source, commit, got, want)
+	}
+}
