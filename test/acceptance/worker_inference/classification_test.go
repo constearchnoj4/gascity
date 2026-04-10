@@ -459,6 +459,18 @@ func TestStageClaudeAuthFromFiles(t *testing.T) {
 	require.JSONEq(t, string(rootLegacy), string(nestedLegacy))
 }
 
+func TestStageClaudeAuthFromAuthToken(t *testing.T) {
+	gcHome := t.TempDir()
+	env := helpers.NewEnv("", gcHome, t.TempDir())
+
+	t.Setenv("ANTHROPIC_AUTH_TOKEN", "synthetic-token")
+
+	source, err := stageClaudeAuth(gcHome, env)
+	require.NoError(t, err)
+	require.Equal(t, "env:ANTHROPIC_AUTH_TOKEN", source)
+	require.Equal(t, "synthetic-token", env.Get("ANTHROPIC_AUTH_TOKEN"))
+}
+
 func TestStageClaudeAuthPrefersSourceConfigDir(t *testing.T) {
 	gcHome := t.TempDir()
 	env := helpers.NewEnv("", gcHome, t.TempDir())

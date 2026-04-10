@@ -7,9 +7,11 @@
 // Assertions are loose (eventual consistency) because model behavior is
 // non-deterministic.
 //
-// Requires: gc binary, bd binary, tmux, dolt, ANTHROPIC_API_KEY (or OAuth).
+// Requires: gc binary, bd binary, tmux, dolt, ANTHROPIC_AUTH_TOKEN or
+// ANTHROPIC_API_KEY (or OAuth).
 // Expected duration: ~5 min per scenario.
-// Trigger: manual (make test-acceptance-c), then nightly.
+// Trigger: manual (make test-acceptance-c). Worker-inference acceptance_c
+// lanes run nightly.
 package tierc_test
 
 import (
@@ -31,14 +33,16 @@ var testEnvC *helpers.Env
 
 func TestMain(m *testing.M) {
 	// Tier C needs real inference. Accept either:
-	// 1. ANTHROPIC_API_KEY env var (CI mode)
+	// 1. ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY env var (CI/gateway mode)
 	// 2. GC_TIERC_FORCE=1 env var (local OAuth mode — user asserts Claude is authed)
 	// 3. Detect OAuth: check if ~/.claude/ exists with credentials
-	apiKey := os.Getenv("ANTHROPIC_API_KEY")
+	authToken := strings.TrimSpace(os.Getenv("ANTHROPIC_AUTH_TOKEN"))
+	apiKey := strings.TrimSpace(os.Getenv("ANTHROPIC_API_KEY"))
+	hasEnvAuth := authToken != "" || apiKey != ""
 	forceRun := os.Getenv("GC_TIERC_FORCE") == "1"
 	hasOAuth := oauthCredentialsExist()
 
-	if apiKey == "" && !forceRun && !hasOAuth {
+	if !hasEnvAuth && !forceRun && !hasOAuth {
 		// No credentials available, skip silently.
 		os.Exit(0)
 	}
@@ -81,43 +85,50 @@ func TestMain(m *testing.M) {
 		panic("acceptance-c: " + err.Error())
 	}
 
-	// Force a token refresh before staging credentials. Claude Code
-	// refreshes tokens in-memory but may not persist to .credentials.json,
-	// leaving the on-disk token expired. A quick --print call forces the
-	// refresh and (in newer versions) persists it.
-	if refreshOut, err := exec.Command("claude", "--print", "ok").CombinedOutput(); err != nil {
-		fmt.Fprintf(os.Stderr, "acceptance-c: OAuth preflight refresh failed: %v\n%s\n", err, refreshOut)
-	}
-
-	// Symlink the host's .claude dir so the test always sees fresh OAuth
-	// tokens (including tokens refreshed by aimux during the test run).
-	// Copying credentials leads to stale token failures on long test suites.
-	realHome, _ := os.UserHomeDir()
-	srcClaudeDir := filepath.Join(realHome, ".claude")
-	dstClaudeDir := filepath.Join(gcHome, ".claude")
-	if _, err := os.Stat(srcClaudeDir); err == nil {
-		if err := os.Symlink(srcClaudeDir, dstClaudeDir); err != nil {
-			// Fall back to copy if symlink fails (e.g., cross-device).
-			if err2 := stageClaudeOAuth(realHome, gcHome); err2 != nil {
-				panic("acceptance-c: staging Claude oauth: " + err2.Error())
-			}
+	if !hasEnvAuth {
+		// Force a token refresh before staging credentials. Claude Code
+		// refreshes tokens in-memory but may not persist to .credentials.json,
+		// leaving the on-disk token expired. A quick --print call forces the
+		// refresh and (in newer versions) persists it.
+		if refreshOut, err := exec.Command("claude", "--print", "ok").CombinedOutput(); err != nil {
+			fmt.Fprintf(os.Stderr, "acceptance-c: OAuth preflight refresh failed: %v\n%s\n", err, refreshOut)
 		}
-	} else if err := stageClaudeOAuth(realHome, gcHome); err != nil {
-		panic("acceptance-c: staging Claude oauth: " + err.Error())
-	}
-	// Also symlink .claude.json if it exists (legacy config location).
-	srcClaudeJSON := filepath.Join(realHome, ".claude.json")
-	dstClaudeJSON := filepath.Join(gcHome, ".claude.json")
-	if _, err := os.Stat(srcClaudeJSON); err == nil {
-		_ = os.Symlink(srcClaudeJSON, dstClaudeJSON)
+
+		// Symlink the host's .claude dir so the test always sees fresh OAuth
+		// tokens (including tokens refreshed by aimux during the test run).
+		// Copying credentials leads to stale token failures on long test suites.
+		realHome, _ := os.UserHomeDir()
+		srcClaudeDir := filepath.Join(realHome, ".claude")
+		dstClaudeDir := filepath.Join(gcHome, ".claude")
+		if _, err := os.Stat(srcClaudeDir); err == nil {
+			if err := os.Symlink(srcClaudeDir, dstClaudeDir); err != nil {
+				// Fall back to copy if symlink fails (e.g., cross-device).
+				if err2 := stageClaudeOAuth(realHome, gcHome); err2 != nil {
+					panic("acceptance-c: staging Claude oauth: " + err2.Error())
+				}
+			}
+		} else if err := stageClaudeOAuth(realHome, gcHome); err != nil {
+			panic("acceptance-c: staging Claude oauth: " + err.Error())
+		}
+		// Also symlink .claude.json if it exists (legacy config location).
+		srcClaudeJSON := filepath.Join(realHome, ".claude.json")
+		dstClaudeJSON := filepath.Join(gcHome, ".claude.json")
+		if _, err := os.Stat(srcClaudeJSON); err == nil {
+			_ = os.Symlink(srcClaudeJSON, dstClaudeJSON)
+		}
 	}
 
 	testEnvC = helpers.NewEnv(gcBinary, gcHome, runtimeDir).
-		Without("GC_SESSION"). // use real tmux, not subprocess
-		Without("GC_BEADS").   // use real bd (dolt-backed) provider
-		Without("GC_DOLT").    // let gc manage dolt (don't skip it)
-		With("ANTHROPIC_API_KEY", apiKey).
+		Without("GC_SESSION").         // use real tmux, not subprocess
+		Without("GC_BEADS").           // use real bd (dolt-backed) provider
+		Without("GC_DOLT").            // let gc manage dolt (don't skip it)
 		With("DOLT_ROOT_PATH", gcHome) // dolt reads config from $DOLT_ROOT_PATH/.dolt/
+	if authToken != "" {
+		testEnvC.With("ANTHROPIC_AUTH_TOKEN", authToken)
+	}
+	if apiKey != "" {
+		testEnvC.With("ANTHROPIC_API_KEY", apiKey)
+	}
 
 	// Ensure tmux is available.
 	if _, err := exec.LookPath("tmux"); err != nil {
