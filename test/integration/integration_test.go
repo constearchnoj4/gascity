@@ -348,6 +348,11 @@ func findModuleRoot() string {
 	}
 }
 
+func repoRoot(t *testing.T) string {
+	t.Helper()
+	return findModuleRoot()
+}
+
 // filterEnv returns env with the named variable removed.
 func filterEnv(env []string, name string) []string {
 	prefix := name + "="
@@ -357,6 +362,14 @@ func filterEnv(env []string, name string) []string {
 			continue
 		}
 		result = append(result, e)
+	}
+	return result
+}
+
+func filterEnvMany(env []string, names ...string) []string {
+	result := append([]string(nil), env...)
+	for _, name := range names {
+		result = filterEnv(result, name)
 	}
 	return result
 }
