@@ -1339,23 +1339,43 @@ func TestDoInitSuccess(t *testing.T) {
 		t.Errorf("stdout missing city name: %q", out)
 	}
 
-	// Verify .gc/ and prompts/ were created (no rigs/ — created on demand by gc rig add).
+	// Verify .gc/ and the new city-root conventions were created (no rigs/ — created on demand by gc rig add).
 	if !f.Dirs[filepath.Join("/bright-lights", ".gc")] {
 		t.Error(".gc/ not created")
 	}
 	if f.Dirs[filepath.Join("/bright-lights", "rigs")] {
 		t.Error("rigs/ should not be created by init")
 	}
-	if !f.Dirs[filepath.Join("/bright-lights", "prompts")] {
-		t.Error("prompts/ not created")
+	for _, dir := range []string{
+		"agents",
+		"commands",
+		"doctor",
+		"formulas",
+		"orders",
+		"template-fragments",
+		"overlays",
+		"assets",
+	} {
+		if !f.Dirs[filepath.Join("/bright-lights", dir)] {
+			t.Errorf("%s/ not created", dir)
+		}
 	}
 
-	// Verify prompt files were written.
-	if _, ok := f.Files[filepath.Join("/bright-lights", "prompts", "mayor.md")]; !ok {
-		t.Error("prompts/mayor.md not written")
+	// Verify prompt templates were written.
+	if _, ok := f.Files[filepath.Join("/bright-lights", "agents", "mayor", "prompt.template.md")]; !ok {
+		t.Error("agents/mayor/prompt.template.md not written")
 	}
-	if _, ok := f.Files[filepath.Join("/bright-lights", "prompts", "worker.md")]; !ok {
-		t.Error("prompts/worker.md not written")
+	if _, ok := f.Files[filepath.Join("/bright-lights", "agents", "worker", "prompt.template.md")]; !ok {
+		t.Error("agents/worker/prompt.template.md not written")
+	}
+
+	// Verify pack.toml was written.
+	packToml := string(f.Files[filepath.Join("/bright-lights", "pack.toml")])
+	if !strings.Contains(packToml, `name = "bright-lights"`) {
+		t.Errorf("pack.toml missing pack name:\n%s", packToml)
+	}
+	if !strings.Contains(packToml, "schema = 2") {
+		t.Errorf("pack.toml missing schema 2:\n%s", packToml)
 	}
 
 	// Verify written config parses correctly.
@@ -1373,8 +1393,8 @@ func TestDoInitSuccess(t *testing.T) {
 	if cfg.Agents[0].Name != "mayor" {
 		t.Errorf("Agents[0].Name = %q, want %q", cfg.Agents[0].Name, "mayor")
 	}
-	if cfg.Agents[0].PromptTemplate != "prompts/mayor.md" {
-		t.Errorf("Agents[0].PromptTemplate = %q, want %q", cfg.Agents[0].PromptTemplate, "prompts/mayor.md")
+	if cfg.Agents[0].PromptTemplate != "agents/mayor/prompt.template.md" {
+		t.Errorf("Agents[0].PromptTemplate = %q, want %q", cfg.Agents[0].PromptTemplate, "agents/mayor/prompt.template.md")
 	}
 }
 
@@ -1393,7 +1413,7 @@ name = "bright-lights"
 
 [[agent]]
 name = "mayor"
-prompt_template = "prompts/mayor.md"
+prompt_template = "agents/mayor/prompt.template.md"
 
 [[named_session]]
 template = "mayor"
@@ -1401,6 +1421,15 @@ mode = "always"
 `
 	if got != want {
 		t.Errorf("city.toml content:\ngot:\n%s\nwant:\n%s", got, want)
+	}
+
+	packGot := string(f.Files[filepath.Join("/bright-lights", "pack.toml")])
+	packWant := `[pack]
+name = "bright-lights"
+schema = 2
+`
+	if packGot != packWant {
+		t.Errorf("pack.toml content:\ngot:\n%s\nwant:\n%s", packGot, packWant)
 	}
 }
 
@@ -1886,6 +1915,9 @@ func TestDoInitWithWizardConfig(t *testing.T) {
 	if cfg.Agents[0].Name != "mayor" {
 		t.Errorf("Agents[0].Name = %q, want %q", cfg.Agents[0].Name, "mayor")
 	}
+	if cfg.Agents[0].PromptTemplate != "agents/mayor/prompt.template.md" {
+		t.Errorf("Agents[0].PromptTemplate = %q, want %q", cfg.Agents[0].PromptTemplate, "agents/mayor/prompt.template.md")
+	}
 	// Verify provider appears in TOML.
 	if !strings.Contains(string(data), `provider = "claude"`) {
 		t.Errorf("city.toml missing provider:\n%s", data)
@@ -2187,6 +2219,20 @@ scale_check = "echo 3"
 	}
 	if *cfg.Agents[1].MaxActiveSessions != 5 {
 		t.Errorf("Agents[1].MaxActiveSessions = %d, want 5", *cfg.Agents[1].MaxActiveSessions)
+	}
+	if cfg.Agents[0].PromptTemplate != "agents/mayor/prompt.template.md" {
+		t.Errorf("Agents[0].PromptTemplate = %q, want %q", cfg.Agents[0].PromptTemplate, "agents/mayor/prompt.template.md")
+	}
+
+	packData, err := os.ReadFile(filepath.Join(cityPath, "pack.toml"))
+	if err != nil {
+		t.Fatalf("reading pack.toml: %v", err)
+	}
+	if !strings.Contains(string(packData), `name = "bright-lights"`) {
+		t.Errorf("pack.toml missing pack name:\n%s", packData)
+	}
+	if _, err := os.Stat(filepath.Join(cityPath, "agents", "mayor", "prompt.template.md")); err != nil {
+		t.Errorf("agents/mayor/prompt.template.md missing: %v", err)
 	}
 }
 
