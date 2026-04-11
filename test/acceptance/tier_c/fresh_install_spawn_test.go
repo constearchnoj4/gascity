@@ -72,6 +72,7 @@ func runFreshInitSlingClaudeWork(t *testing.T, prompt, outputRel string) freshIn
 
 	c := helpers.NewCity(t, testEnvC)
 	c.Init("claude")
+	applyTierCAcceptanceConfig(c)
 
 	initialSessionBeadsOut, err := bdCmd(testEnvC, c.Dir, "list", "--include-infra", "--label", "gc:session", "--json", "--limit=20")
 	require.NoError(t, err, "bd list session beads before sling: %s", initialSessionBeadsOut)

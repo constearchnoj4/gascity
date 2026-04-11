@@ -30,7 +30,7 @@ import (
 
 var testEnvC *helpers.Env
 
-const gastownAcceptanceConfig = `
+const tierCAcceptanceConfig = `
 [session]
 startup_timeout = "3m"
 `
@@ -178,6 +178,7 @@ func TestSwarm_SlingWorkCoderCommits(t *testing.T) {
 	// Init a swarm city.
 	c := helpers.NewCity(t, testEnvC)
 	c.InitFrom(filepath.Join(helpers.ExamplesDir(), "swarm"))
+	applyTierCAcceptanceConfig(c)
 
 	// Add the rig via gc rig add (initializes beads, hooks, routes).
 	c.RigAdd(rigDir, "packs/swarm")
@@ -198,7 +199,7 @@ func TestSwarm_SlingWorkCoderCommits(t *testing.T) {
 	t.Logf("Slung work: %s", strings.TrimSpace(out))
 
 	// Poll for outcome: a commit should eventually appear that creates hello.txt.
-	deadline := 5 * time.Minute
+	deadline := 8 * time.Minute
 	found := pollForCondition(t, deadline, 10*time.Second, func() bool {
 		_, err := os.Stat(filepath.Join(rigDir, "hello.txt"))
 		return err == nil
@@ -207,7 +208,9 @@ func TestSwarm_SlingWorkCoderCommits(t *testing.T) {
 	if !found {
 		gitLog := gitCmd(t, rigDir, "log", "--oneline", "-10")
 		status, _ := c.GC("status")
-		t.Fatalf("hello.txt not created within %s\ngit log:\n%s\nstatus:\n%s", deadline, gitLog, status)
+		rigBeads, _ := bdCmd(testEnvC, rigDir, "list", "--json", "--limit=50")
+		sessionDiag := gatherSessionDiagnostics(t, c, c.Dir, "repo/coder", "repo/committer")
+		t.Fatalf("hello.txt not created within %s\ngit log:\n%s\nstatus:\n%s\nrig beads:\n%s\n%s", deadline, gitLog, status, rigBeads, sessionDiag)
 	}
 
 	t.Logf("hello.txt created successfully")
@@ -284,9 +287,10 @@ func TestGastown_PolecatImplementsRefineryMerges(t *testing.T) {
 	c.StartForeground()
 
 	// Poll for outcome: refinery must eventually merge the work to origin/main.
-	// 15 minutes: ~1m city startup + ~1m config-drift restart (suspended→unsuspended
-	// changes pool config fingerprint) + ~3m polecat work + ~2m refinery merge + buffer.
-	deadline := 15 * time.Minute
+	// 18 minutes: Synthetic-backed workers can take longer to start and
+	// complete the polecat -> witness -> refinery chain than the original
+	// Anthropic-backed budget this test was written around.
+	deadline := 18 * time.Minute
 	merged := pollForCondition(t, deadline, 15*time.Second, func() bool {
 		_ = gitCmd(t, rigDir, "fetch", "origin")
 		content := gitCmd(t, rigDir, "show", "origin/main:feature.txt")
@@ -302,7 +306,7 @@ func TestGastown_PolecatImplementsRefineryMerges(t *testing.T) {
 		outerFinal, _ := bdCmd(testEnvC, rigDir, "show", outerID, "--json")
 		refineryAssigned, _ := bdCmd(testEnvC, rigDir, "list", "--assignee=repo/refinery", "--json", "--limit=20")
 		refineryInProgress, _ := bdCmd(testEnvC, rigDir, "list", "--status=in_progress", "--assignee=repo/refinery", "--json", "--limit=20")
-		sessionDiag := gatherSessionDiagnostics(t, c, rigDir, "mayor", "repo/witness", "repo/refinery", "repo/polecat")
+		sessionDiag := gatherSessionDiagnostics(t, c, c.Dir, "mayor", "repo/witness", "repo/refinery", "repo/polecat")
 		t.Fatalf("feature.txt was not merged to origin/main within %s\nbranches:\n%s\ngit log:\n%s\norigin/main:\n%s\nstatus:\n%s",
 			deadline, branches, gitLog, originMain, status+
 				"\nouter bead:\n"+outerFinal+
@@ -336,6 +340,7 @@ func TestGastown_PolecatLifecycle(t *testing.T) {
 
 	c := newGastownAcceptanceCity(t)
 	c.RigAdd(rigDir, "packs/gastown")
+	seedGastownClaudeProjects(t, c, rigName)
 
 	// Limit pool to 1 polecat, cap cost.
 	c.AppendToConfig("\n[[rigs.overrides]]\nagent = \"polecat\"\n[rigs.overrides.pool]\nmin = 1\nmax = 1\n")
@@ -387,6 +392,7 @@ func TestGastown_MayorDispatchPipeline(t *testing.T) {
 
 	c := newGastownAcceptanceCity(t)
 	c.RigAdd(rigDir, "packs/gastown")
+	seedGastownClaudeProjects(t, c, rigName)
 
 	// Limit pool sizes.
 	c.AppendToConfig("\n[[rigs.overrides]]\nagent = \"polecat\"\n[rigs.overrides.pool]\nmin = 1\nmax = 1\n")
@@ -419,7 +425,7 @@ func TestGastown_MayorDispatchPipeline(t *testing.T) {
 		if mayorInboxErr != nil {
 			mayorInbox = strings.TrimSpace(mayorInbox + "\nERR: " + mayorInboxErr.Error())
 		}
-		sessionDiag := gatherSessionDiagnostics(t, c, rigDir, "mayor", "repo/witness", "repo/refinery", "repo/polecat")
+		sessionDiag := gatherSessionDiagnostics(t, c, c.Dir, "mayor", "repo/witness", "repo/refinery", "repo/polecat")
 		t.Fatalf("mayor did not dispatch work within %s\nstatus:\n%s\nrig beads:\n%s\nmayor inbox:\n%s\n%s", deadline, status, rigBeads, mayorInbox, sessionDiag)
 	}
 
@@ -454,8 +460,15 @@ func newGastownAcceptanceCity(t *testing.T) *helpers.City {
 	t.Helper()
 	c := helpers.NewCity(t, testEnvC)
 	c.InitFrom(filepath.Join(helpers.ExamplesDir(), "gastown"))
-	c.AppendToConfig(gastownAcceptanceConfig)
+	applyTierCAcceptanceConfig(c)
+	seedClaudeProjectState(t, c, filepath.Join(c.Dir, ".gc", "agents", "mayor"))
+	seedClaudeProjectState(t, c, filepath.Join(c.Dir, ".gc", "agents", "deacon"))
+	seedClaudeProjectState(t, c, filepath.Join(c.Dir, ".gc", "agents", "boot"))
 	return c
+}
+
+func applyTierCAcceptanceConfig(c *helpers.City) {
+	c.AppendToConfig(tierCAcceptanceConfig)
 }
 
 func gitCmd(t *testing.T, dir string, args ...string) string {
@@ -514,7 +527,7 @@ func bdCmd(env *helpers.Env, dir string, args ...string) (string, error) {
 	return string(out), err
 }
 
-func gatherSessionDiagnostics(t *testing.T, c *helpers.City, rigDir string, templates ...string) string {
+func gatherSessionDiagnostics(t *testing.T, c *helpers.City, beadDir string, templates ...string) string {
 	t.Helper()
 
 	var b strings.Builder
@@ -527,7 +540,7 @@ func gatherSessionDiagnostics(t *testing.T, c *helpers.City, rigDir string, temp
 	b.WriteString(sessionOut)
 	b.WriteString("\n")
 
-	sessionBeadsOut, sessionBeadsErr := bdCmd(testEnvC, rigDir, "list", "--include-infra", "--label", "gc:session", "--json", "--limit=50")
+	sessionBeadsOut, sessionBeadsErr := bdCmd(testEnvC, beadDir, "list", "--include-infra", "--label", "gc:session", "--json", "--limit=50")
 	if sessionBeadsErr != nil {
 		sessionBeadsOut = strings.TrimSpace(sessionBeadsOut + "\nERR: " + sessionBeadsErr.Error())
 	}
@@ -585,6 +598,22 @@ func gatherSessionDiagnostics(t *testing.T, c *helpers.City, rigDir string, temp
 	b.WriteString("\n")
 
 	return b.String()
+}
+
+func seedGastownClaudeProjects(t *testing.T, c *helpers.City, rigName string) {
+	t.Helper()
+	for _, path := range []string{
+		filepath.Join(c.Dir, ".gc", "agents", rigName, "witness"),
+		filepath.Join(c.Dir, ".gc", "worktrees", rigName, "refinery"),
+		filepath.Join(c.Dir, ".gc", "worktrees", rigName, "polecats", "polecat"),
+	} {
+		seedClaudeProjectState(t, c, path)
+	}
+}
+
+func seedClaudeProjectState(t *testing.T, c *helpers.City, projectPath string) {
+	t.Helper()
+	require.NoError(t, helpers.EnsureClaudeProjectState(c.Env, projectPath), "seed Claude project state for %s", projectPath)
 }
 
 // oauthCredentialsExist checks if Claude CLI OAuth credentials are
