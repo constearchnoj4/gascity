@@ -238,7 +238,7 @@ func (r *cityRegistry) UnregisterCity(name string) (api.CityUnregisterResult, er
 	snap := r.snap.Load()
 	view, ok := snap.byName[name]
 	if !ok {
-		return api.CityUnregisterResult{}, fmt.Errorf("city %q not found", name)
+		return api.CityUnregisterResult{}, fmt.Errorf("city %q: %w", name, api.ErrCityNotFound)
 	}
 
 	wasRunning := view.Started

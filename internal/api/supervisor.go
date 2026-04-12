@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net"
 	"net/http"
@@ -13,6 +14,9 @@ import (
 
 	"github.com/gastownhall/gascity/internal/events"
 )
+
+// ErrCityNotFound is returned when UnregisterCity cannot find the city.
+var ErrCityNotFound = errors.New("city not found")
 
 // CityInfo describes a managed city for the /v0/cities endpoint.
 type CityInfo struct {
@@ -162,22 +166,19 @@ func (sm *SupervisorMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// City unregistration is supervisor-level: it calls Registry.Unregister
 	// and doesn't need a running city, so handle it before per-city routing.
+	// Only match exact DELETE /v0/city/{name} — requests with trailing
+	// path segments (e.g. /v0/city/{name}/agents) fall through to
+	// per-city routing below.
 	if strings.HasPrefix(path, "/v0/city/") && r.Method == http.MethodDelete {
 		cityName := strings.TrimPrefix(path, "/v0/city/")
-		// Strip any trailing path segments — DELETE /v0/city/{name} only.
-		if idx := strings.IndexByte(cityName, '/'); idx >= 0 {
-			cityName = cityName[:idx]
-		}
-		if cityName == "" {
-			writeError(w, http.StatusBadRequest, "bad_request", "city name required in URL")
+		if !strings.Contains(cityName, "/") && cityName != "" {
+			if sm.readOnly {
+				writeError(w, http.StatusForbidden, "read_only", "mutations disabled: server bound to non-localhost address")
+				return
+			}
+			sm.handleCityDelete(w, r, cityName)
 			return
 		}
-		if sm.readOnly {
-			writeError(w, http.StatusForbidden, "read_only", "mutations disabled: server bound to non-localhost address")
-			return
-		}
-		sm.handleCityDelete(w, r, cityName)
-		return
 	}
 
 	// City-namespaced: /v0/city/{name} or /v0/city/{name}/...
@@ -430,7 +431,11 @@ func (sm *SupervisorMux) handleHealth(w http.ResponseWriter, _ *http.Request) {
 func (sm *SupervisorMux) handleCityDelete(w http.ResponseWriter, _ *http.Request, cityName string) {
 	result, err := sm.resolver.UnregisterCity(cityName)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "not_found", err.Error())
+		if errors.Is(err, ErrCityNotFound) {
+			writeError(w, http.StatusNotFound, "not_found", err.Error())
+		} else {
+			writeError(w, http.StatusInternalServerError, "internal", err.Error())
+		}
 		return
 	}
 	writeJSON(w, http.StatusOK, result)

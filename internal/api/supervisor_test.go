@@ -73,7 +73,7 @@ func (f *fakeCityResolver) UnregisterCity(name string) (CityUnregisterResult, er
 			Success:    true,
 		}, nil
 	}
-	return CityUnregisterResult{}, fmt.Errorf("city %q not found", name)
+	return CityUnregisterResult{}, fmt.Errorf("city %q: %w", name, ErrCityNotFound)
 }
 
 func newTestSupervisorMux(t *testing.T, cities map[string]*fakeState) *SupervisorMux {
@@ -933,5 +933,44 @@ func TestSupervisorCityDeleteResponseFields(t *testing.T) {
 	}
 	if raw["success"] != true {
 		t.Errorf("success = %v, want true", raw["success"])
+	}
+}
+
+func TestSupervisorCityDeleteReadOnly(t *testing.T) {
+	s := newFakeState(t)
+	s.cityName = "bright-lights"
+
+	sm := NewSupervisorMux(&fakeCityResolver{
+		cities: map[string]*fakeState{"bright-lights": s},
+	}, true, "test", time.Now())
+
+	req := httptest.NewRequest(http.MethodDelete, "/v0/city/bright-lights", nil)
+	rec := httptest.NewRecorder()
+	sm.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusForbidden)
+	}
+}
+
+func TestSupervisorCityDeleteSubResourcePassthrough(t *testing.T) {
+	s := newFakeState(t)
+	s.cityName = "bright-lights"
+
+	sm := newTestSupervisorMux(t, map[string]*fakeState{
+		"bright-lights": s,
+	})
+
+	// DELETE /v0/city/{name}/agents should route to the per-city handler,
+	// not unregister the city.
+	req := httptest.NewRequest(http.MethodDelete, "/v0/city/bright-lights/agents", nil)
+	rec := httptest.NewRecorder()
+	sm.ServeHTTP(rec, req)
+
+	// The per-city handler routes to the city's Server which handles
+	// the request. It should NOT return a CityUnregisterResult.
+	body := rec.Body.String()
+	if strings.Contains(body, "was_running") {
+		t.Fatalf("sub-resource DELETE returned unregister response: %s", body)
 	}
 }
