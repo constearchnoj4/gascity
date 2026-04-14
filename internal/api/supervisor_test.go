@@ -58,28 +58,32 @@ func TestSupervisorCitiesList(t *testing.T) {
 		"alpha": s1,
 		"beta":  s2,
 	})
+	base := sm.Handler()
+	ts := httptest.NewServer(base)
+	defer ts.Close()
 
-	req := httptest.NewRequest("GET", "/v0/cities", nil)
-	rec := httptest.NewRecorder()
-	sm.ServeHTTP(rec, req)
+	conn := dialWebSocket(t, ts.URL+"/v0/ws")
+	defer conn.Close()
+	drainWSHello(t, conn)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	writeWSJSON(t, conn, wsRequestEnvelope{Type: "request", ID: "c1", Action: "cities.list"})
+	var resp wsResponseEnvelope
+	readWSJSON(t, conn, &resp)
+	if resp.Type != "response" || resp.ID != "c1" {
+		t.Fatalf("unexpected response: %+v", resp)
 	}
-
-	var resp struct {
+	var result struct {
 		Items []CityInfo `json:"items"`
 		Total int        `json:"total"`
 	}
-	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
-		t.Fatalf("decode: %v", err)
+	if err := json.Unmarshal(resp.Result, &result); err != nil {
+		t.Fatalf("decode result: %v", err)
 	}
-	if resp.Total != 2 {
-		t.Errorf("Total = %d, want 2", resp.Total)
+	if result.Total != 2 {
+		t.Errorf("Total = %d, want 2", result.Total)
 	}
-	// Sorted by name.
-	if resp.Items[0].Name != "alpha" || resp.Items[1].Name != "beta" {
-		t.Errorf("items = %v, want alpha then beta", resp.Items)
+	if result.Items[0].Name != "alpha" || result.Items[1].Name != "beta" {
+		t.Errorf("items = %v, want alpha then beta", result.Items)
 	}
 }
 

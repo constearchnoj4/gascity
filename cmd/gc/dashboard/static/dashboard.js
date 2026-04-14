@@ -3655,23 +3655,13 @@
     });
 
     function fetchAgentOutput(agentName, tail, before, callback) {
-        var url = '/api/agent/output?name=' + encodeURIComponent(agentName);
-        if (tail > 0) url += '&tail=' + tail;
-        if (before) url += '&before=' + encodeURIComponent(before);
-        fetch(url)
-            .then(function(r) {
-                if (!r.ok) {
-                    return r.json().then(function(d) {
-                        return { error: d.message || 'Request failed (' + r.status + ')' };
-                    }).catch(function() {
-                        return { error: 'Request failed (' + r.status + ')' };
-                    });
-                }
-                return r.json();
-            })
+        var payload = { id: agentName };
+        if (tail > 0) payload.turns = tail;
+        if (before) payload.before = before;
+        wsRequest('session.transcript', payload)
             .then(callback)
             .catch(function(err) {
-                callback({ error: err.message });
+                callback({ error: err.message || 'Request failed' });
             });
     }
 

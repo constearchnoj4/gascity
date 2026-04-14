@@ -117,10 +117,6 @@ func (sm *SupervisorMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		sm.handleWebSocket(w, r)
 		return
 	}
-	if path == "/v0/cities" && r.Method == http.MethodGet {
-		sm.handleCities(w, r)
-		return
-	}
 	if path == "/v0/provider-readiness" && r.Method == http.MethodGet {
 		handleProviderReadiness(w, r)
 		return
