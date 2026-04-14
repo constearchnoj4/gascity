@@ -1,15 +1,23 @@
 package api
 
 import (
-	"context"
 	"encoding/json"
-	"net/http"
 	"strings"
 	"time"
 
 	"github.com/gastownhall/gascity/internal/beads"
 	"github.com/gastownhall/gascity/internal/events"
 )
+
+type eventStreamEnvelope struct {
+	events.Event
+	Workflow *workflowEventProjection `json:"workflow,omitempty"`
+}
+
+type taggedEventStreamEnvelope struct {
+	events.TaggedEvent
+	Workflow *workflowEventProjection `json:"workflow,omitempty"`
+}
 
 type workflowEventProjection struct {
 	Type            string               `json:"type"`
@@ -28,129 +36,6 @@ type workflowEventProjection struct {
 	LogicalNodeID   string               `json:"logical_node_id"`
 	AttemptSummary  map[string]any       `json:"attempt_summary,omitempty"`
 	RequiresResync  bool                 `json:"requires_resync,omitempty"`
-}
-
-type eventStreamEnvelope struct {
-	events.Event
-	Workflow *workflowEventProjection `json:"workflow,omitempty"`
-}
-
-type taggedEventStreamEnvelope struct {
-	events.TaggedEvent
-	Workflow *workflowEventProjection `json:"workflow,omitempty"`
-}
-
-func streamProjectedEventsWithWatcher(
-	ctx context.Context,
-	w http.ResponseWriter,
-	watcher events.Watcher,
-	state State,
-) {
-	defer watcher.Close() //nolint:errcheck
-
-	keepalive := time.NewTicker(sseKeepalive)
-	defer keepalive.Stop()
-
-	type result struct {
-		event events.Event
-		err   error
-	}
-	ch := make(chan result, 1)
-
-	readNext := func() {
-		go func() {
-			e, err := watcher.Next()
-			select {
-			case ch <- result{event: e, err: err}:
-			case <-ctx.Done():
-			}
-		}()
-	}
-
-	readNext()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case r := <-ch:
-			if r.err != nil {
-				return
-			}
-			data, err := json.Marshal(eventStreamEnvelope{
-				Event:    r.event,
-				Workflow: projectWorkflowEvent(state, r.event),
-			})
-			if err == nil {
-				writeSSE(w, r.event.Type, r.event.Seq, data)
-			}
-			readNext()
-		case <-keepalive.C:
-			writeSSEComment(w)
-		}
-	}
-}
-
-func streamProjectedGlobalEvents(
-	ctx context.Context,
-	w http.ResponseWriter,
-	mw *events.MuxWatcher,
-	cursors map[string]uint64,
-	resolver CityResolver,
-) {
-	defer mw.Close() //nolint:errcheck
-
-	if cursors == nil {
-		cursors = make(map[string]uint64)
-	}
-
-	keepalive := time.NewTicker(sseKeepalive)
-	defer keepalive.Stop()
-
-	type result struct {
-		event events.TaggedEvent
-		err   error
-	}
-	ch := make(chan result, 1)
-
-	readNext := func() {
-		go func() {
-			te, err := mw.Next()
-			select {
-			case ch <- result{event: te, err: err}:
-			case <-ctx.Done():
-			}
-		}()
-	}
-
-	readNext()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case r := <-ch:
-			if r.err != nil {
-				return
-			}
-			cursors[r.event.City] = r.event.Seq
-			var wfp *workflowEventProjection
-			if cs := resolver.CityState(r.event.City); cs != nil {
-				wfp = projectWorkflowEvent(cs, r.event.Event)
-			}
-			data, err := json.Marshal(taggedEventStreamEnvelope{
-				TaggedEvent: r.event,
-				Workflow:    wfp,
-			})
-			if err == nil {
-				cursorID := events.FormatCursor(cursors)
-				writeSSEWithStringID(w, r.event.Type, cursorID, data)
-			}
-			readNext()
-		case <-keepalive.C:
-			writeSSEComment(w)
-		}
-	}
 }
 
 func projectWorkflowEvent(state State, event events.Event) *workflowEventProjection {

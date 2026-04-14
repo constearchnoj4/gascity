@@ -123,6 +123,12 @@ components:
             - session.pending
             - session.submit
             - session.transcript
+            - session.stop
+            - session.create
+            - session.patch
+            - session.messages
+            - session.agents.list
+            - session.agent.get
             - beads.list
             - beads.ready
             - beads.graph
@@ -143,18 +149,32 @@ components:
             - mail.archive
             - mail.reply
             - mail.send
+            - mail.delete
             - events.list
+            - event.emit
             - agents.list
             - agent.get
             - agent.suspend
             - agent.resume
+            - agent.create
+            - agent.update
+            - agent.delete
             - rigs.list
             - rig.get
             - rig.suspend
             - rig.resume
             - rig.restart
+            - rig.create
+            - rig.update
+            - rig.delete
             - convoys.list
             - convoy.get
+            - convoy.create
+            - convoy.add
+            - convoy.remove
+            - convoy.check
+            - convoy.close
+            - convoy.delete
             - sling.run
             - services.list
             - service.get
@@ -162,6 +182,9 @@ components:
             - packs.list
             - providers.list
             - provider.get
+            - provider.create
+            - provider.update
+            - provider.delete
             - formulas.list
             - formulas.feed
             - formula.get
@@ -173,6 +196,7 @@ components:
             - order.enable
             - order.disable
             - order.history.detail
+            - orders.feed
             - extmsg.inbound
             - extmsg.outbound
             - extmsg.bindings.list
@@ -199,6 +223,8 @@ components:
             - patches.provider.get
             - patches.providers.set
             - patches.provider.delete
+            - workflow.get
+            - workflow.delete
             - subscription.start
             - subscription.stop
         idempotency_key:

@@ -266,39 +266,6 @@ func (sm *SupervisorMux) handleCities(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, sm.citiesList())
 }
 
-// handleGlobalEventStream streams SSE events from all running cities,
-// tagged with city name. The cursor format for reconnection is
-// "city1:seq1,city2:seq2" via Last-Event-ID or ?after_cursor.
-func (sm *SupervisorMux) handleGlobalEventStream(w http.ResponseWriter, r *http.Request) {
-	mux := sm.buildMultiplexer()
-
-	// Parse cursor from Last-Event-ID or query param.
-	cursor := r.Header.Get("Last-Event-ID")
-	if cursor == "" {
-		cursor = r.URL.Query().Get("after_cursor")
-	}
-	cursors := events.ParseCursor(cursor)
-
-	mw, err := mux.Watch(r.Context(), cursors)
-	if err != nil {
-		writeError(w, http.StatusServiceUnavailable, "internal", "failed to start global event watcher: "+err.Error())
-		return
-	}
-
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.WriteHeader(http.StatusOK)
-	if err := http.NewResponseController(w).Flush(); err != nil {
-		_ = err
-	}
-
-	// Stream tagged events with composite cursor IDs. We use a
-	// dedicated loop because the SSE id must be a composite per-city
-	// cursor, not a scalar Seq.
-	streamProjectedGlobalEvents(r.Context(), w, mw, cursors, sm.resolver)
-}
-
 // handleGlobalEventList returns events from all running cities, sorted
 // by timestamp, with each event tagged with its source city.
 func (sm *SupervisorMux) handleGlobalEventList(w http.ResponseWriter, r *http.Request) {

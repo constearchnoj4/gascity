@@ -656,3 +656,131 @@ func TestDocDirCoverage(t *testing.T) {
 		}
 	}
 }
+
+// TestAsyncAPIActionsMatchGoCode verifies that the action enum in the AsyncAPI
+// spec stays in sync with the Go switch statement in websocket.go. Every WS
+// action in the Go code must appear in the spec, and vice versa.
+func TestAsyncAPIActionsMatchGoCode(t *testing.T) {
+	root := repoRoot()
+
+	// 1. Extract actions from the AsyncAPI spec's enum list.
+	specPath := filepath.Join(root, "contracts", "supervisor-ws", "asyncapi.yaml")
+	specData, err := os.ReadFile(specPath)
+	if err != nil {
+		t.Fatalf("read asyncapi.yaml: %v", err)
+	}
+	specActions := extractAsyncAPIActions(specData)
+	if len(specActions) == 0 {
+		t.Fatal("no actions found in asyncapi.yaml enum")
+	}
+
+	// 2. Extract actions from the Go switch statement.
+	wsPath := filepath.Join(root, "internal", "api", "websocket.go")
+	wsData, err := os.ReadFile(wsPath)
+	if err != nil {
+		t.Fatalf("read websocket.go: %v", err)
+	}
+	goActions := extractGoSwitchActions(wsData)
+	if len(goActions) == 0 {
+		t.Fatal("no case actions found in websocket.go")
+	}
+
+	// 3. Compare: every Go action must be in the spec.
+	specSet := make(map[string]bool)
+	for _, a := range specActions {
+		specSet[a] = true
+	}
+	goSet := make(map[string]bool)
+	for _, a := range goActions {
+		goSet[a] = true
+	}
+
+	var inGoNotSpec []string
+	for _, a := range goActions {
+		if !specSet[a] {
+			inGoNotSpec = append(inGoNotSpec, a)
+		}
+	}
+	var inSpecNotGo []string
+	// Protocol-level actions are in the spec but handled separately from domain actions.
+	protocolActions := map[string]bool{"subscription.start": true, "subscription.stop": true}
+	for _, a := range specActions {
+		if !goSet[a] && !protocolActions[a] {
+			inSpecNotGo = append(inSpecNotGo, a)
+		}
+	}
+
+	if len(inGoNotSpec) > 0 {
+		sort.Strings(inGoNotSpec)
+		t.Errorf("actions in websocket.go but missing from asyncapi.yaml enum:\n")
+		for _, a := range inGoNotSpec {
+			t.Errorf("  - %s", a)
+		}
+	}
+	if len(inSpecNotGo) > 0 {
+		sort.Strings(inSpecNotGo)
+		t.Errorf("actions in asyncapi.yaml enum but missing from websocket.go:\n")
+		for _, a := range inSpecNotGo {
+			t.Errorf("  - %s", a)
+		}
+	}
+}
+
+// extractAsyncAPIActions parses the action enum from the AsyncAPI YAML.
+// Looks for lines like "            - action.name" under the action enum.
+func extractAsyncAPIActions(data []byte) []string {
+	var actions []string
+	inEnum := false
+	scanner := bufio.NewScanner(bytes.NewReader(data))
+	for scanner.Scan() {
+		line := scanner.Text()
+		trimmed := strings.TrimSpace(line)
+		if strings.Contains(line, "enum:") && inEnum {
+			// Second enum block — stop.
+			break
+		}
+		if strings.HasSuffix(trimmed, "action:") {
+			// Next line should be "type: string", then "enum:"
+			continue
+		}
+		if trimmed == "enum:" {
+			inEnum = true
+			continue
+		}
+		if inEnum {
+			if strings.HasPrefix(trimmed, "- ") {
+				action := strings.TrimPrefix(trimmed, "- ")
+				if strings.Contains(action, ".") {
+					actions = append(actions, action)
+				}
+			} else if trimmed != "" && !strings.HasPrefix(trimmed, "#") {
+				// End of enum block.
+				break
+			}
+		}
+	}
+	return actions
+}
+
+// extractGoSwitchActions finds all action names from case statements and string
+// literals in websocket.go. Handles both `case "action":` and grouped cases
+// like `case "a.suspend", "a.resume":`.
+func extractGoSwitchActions(data []byte) []string {
+	// Match all quoted dotted identifiers that look like WS actions.
+	re := regexp.MustCompile(`"([a-z][a-z0-9_]*\.[a-z][a-z0-9_.]*)"`)
+	var actions []string
+	seen := make(map[string]bool)
+	for _, match := range re.FindAllSubmatch(data, -1) {
+		action := string(match[1])
+		// Skip protocol-level actions and false positives.
+		if action == "subscription.start" || action == "subscription.stop" ||
+			action == "gc.v1alpha1" {
+			continue
+		}
+		if !seen[action] {
+			actions = append(actions, action)
+			seen[action] = true
+		}
+	}
+	return actions
+}
