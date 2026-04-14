@@ -3,6 +3,8 @@ package api
 import (
 	"context"
 	"strings"
+
+	"github.com/gastownhall/gascity/internal/session"
 )
 
 func init() {
@@ -36,11 +38,13 @@ func init() {
 		return s.getSessionResponse(payload.ID, payload.Peek)
 	})
 
-	// session.create is complex (internal round-trip + idempotency) — leave on legacy switch.
-	RegisterMeta("session.create", ActionDef{
+	RegisterAction("session.create", ActionDef{
 		Description:       "Create a session",
 		IsMutation:        true,
 		RequiresCityScope: true,
+	}, func(s *Server, p sessionCreateRequest) (any, error) {
+		result, _, err := s.createSessionInternal(context.Background(), p, "")
+		return result, err
 	})
 
 	RegisterAction("session.suspend", ActionDef{
@@ -129,11 +133,15 @@ func init() {
 		return s.getSessionPending(payload.ID)
 	})
 
-	// session.submit is complex — leave on legacy switch.
-	RegisterMeta("session.submit", ActionDef{
+	RegisterAction("session.submit", ActionDef{
 		Description:       "Submit a message to a session",
 		IsMutation:        true,
 		RequiresCityScope: true,
+	}, func(s *Server, p socketSessionSubmitPayload) (map[string]any, error) {
+		if p.Intent == "" {
+			p.Intent = session.SubmitIntentDefault
+		}
+		return s.submitSessionTarget(context.Background(), p.ID, p.Message, p.Intent)
 	})
 
 	RegisterAction("session.transcript", ActionDef{

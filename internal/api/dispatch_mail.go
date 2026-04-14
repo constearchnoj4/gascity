@@ -90,11 +90,12 @@ func init() {
 		})
 	})
 
-	// mail.send uses idempotency — leave on legacy switch.
-	RegisterMeta("mail.send", ActionDef{
+	RegisterAction("mail.send", ActionDef{
 		Description:       "Send a mail message",
 		IsMutation:        true,
 		RequiresCityScope: true,
+	}, func(s *Server, p mailSendRequest) (mail.Message, error) {
+		return s.sendMail(p)
 	})
 
 	RegisterAction("mail.delete", ActionDef{

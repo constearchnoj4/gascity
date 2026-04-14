@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"reflect"
 	"sort"
@@ -66,7 +67,7 @@ func RegisterAction[In, Out any](name string, def ActionDef, handler func(*Serve
 			if err != nil {
 				return socketActionResult{}, socketErrorFor(req.ID, err)
 			}
-			return socketActionResult{Result: result, Index: s.latestIndex()}, nil
+			return socketActionResult{Result: result}, nil
 		},
 	}
 }
@@ -87,8 +88,24 @@ func RegisterVoidAction[Out any](name string, def ActionDef, handler func(*Serve
 			if err != nil {
 				return socketActionResult{}, socketErrorFor(req.ID, err)
 			}
-			return socketActionResult{Result: result, Index: s.latestIndex()}, nil
+			return socketActionResult{Result: result}, nil
 		},
+	}
+}
+
+// registerRawAction registers an action with direct access to the request
+// envelope. Use this only when the handler needs framework-level fields
+// like req.dispatchIndex. Prefer RegisterAction for all other cases.
+func registerRawAction(name string, def ActionDef, handler actionHandler) {
+	actionTableMu.Lock()
+	defer actionTableMu.Unlock()
+	actionTable[name] = &actionEntry{
+		Name:              name,
+		Description:       def.Description,
+		IsMutation:        def.IsMutation,
+		RequiresCityScope: def.RequiresCityScope,
+		SupportsWatch:     def.SupportsWatch,
+		Handler:           handler,
 	}
 }
 
@@ -107,26 +124,77 @@ func RegisterMeta(name string, def ActionDef) {
 	}
 }
 
-// dispatchAction looks up the action in the table and dispatches it.
-// Falls back to the legacy switch during incremental migration.
+// dispatchAction is the single pipeline for all WS actions:
+// scope validation → read-only guard → idempotency → handler → idempotency store → watch
 func (s *Server) dispatchAction(req *socketRequestEnvelope) (socketActionResult, *socketErrorEnvelope) {
 	entry, ok := actionTable[req.Action]
 	if !ok || entry.Handler == nil {
-		// Not yet migrated — fall back to legacy switch.
-		return s.handleSocketRequestLegacy(req)
+		return socketActionResult{}, newSocketError(req.ID, "not_found", "unknown action: "+req.Action)
 	}
-	// On per-city servers, validate that scope.city matches (or is absent).
+
+	// 1. Scope validation
 	if req.Scope != nil && req.Scope.City != "" {
 		if cityName := s.state.CityName(); req.Scope.City != cityName {
 			return socketActionResult{}, newSocketError(req.ID, "invalid",
 				"scope.city "+req.Scope.City+" does not match this city "+cityName)
 		}
 	}
+
+	// 2. Read-only guard
 	if s.readOnly && entry.IsMutation {
 		return socketActionResult{}, newSocketError(req.ID, "read_only",
 			"mutations disabled: server bound to non-localhost address")
 	}
-	return entry.Handler(s, req)
+
+	// 3. Idempotency check (framework concern — handlers never see this)
+	var idemKey, bodyHash string
+	if req.IdempotencyKey != "" && entry.IsMutation {
+		idemKey = socketScopedIdemKey(s.state.CityName(), req.Action, req.IdempotencyKey)
+		bodyHash = hashBody(req.Payload)
+		cached, handled, idemErr := s.idem.checkIdempotent(idemKey, bodyHash)
+		if idemErr != nil {
+			idemErr.ID = req.ID
+			return socketActionResult{}, idemErr
+		}
+		if handled {
+			return socketActionResult{Result: cached}, nil
+		}
+	}
+
+	// 4. Snapshot the event index ONCE (single I/O call, shared by handler and response).
+	// Set on req.dispatchIndex so handlers that need it (e.g., workflow.get) can read it
+	// without a redundant LatestSeq() call.
+	index := s.latestIndex()
+	req.dispatchIndex = index
+
+	// 5. Call handler (pure business logic)
+	result, apiErr := entry.Handler(s, req)
+
+	// 6. Set the index on the response envelope
+	if apiErr == nil {
+		result.Index = index
+	}
+
+	// 6. Idempotency store/unreserve
+	if idemKey != "" {
+		if apiErr != nil {
+			s.idem.unreserve(idemKey)
+		} else {
+			s.idem.storeResponse(idemKey, bodyHash, 200, result.Result)
+		}
+	}
+
+	// 6. Watch semantics (framework concern — handlers never see this)
+	if apiErr == nil && req.Watch != nil && entry.SupportsWatch {
+		if ep := s.state.EventProvider(); ep != nil {
+			bp := socketBlockingParams(req.Watch)
+			if bp.HasIndex {
+				result.Index = waitForChange(context.Background(), ep, bp)
+			}
+		}
+	}
+
+	return result, apiErr
 }
 
 // ActionTableRegistry builds a specgen.Registry from the action table.

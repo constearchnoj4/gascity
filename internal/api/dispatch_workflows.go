@@ -1,13 +1,31 @@
 package api
 
+import "encoding/json"
+
 func init() {
-	// workflow.get needs a single consistent index for both the snapshot body
-	// and the response envelope. The generic framework calls latestIndex()
-	// separately, which can diverge with incrementing event providers.
-	// Keep on legacy switch until the framework supports caller-controlled index.
-	RegisterMeta("workflow.get", ActionDef{
+	// workflow.get needs the dispatch index for snapshot consistency.
+	// Uses raw actionHandler to access req.dispatchIndex directly.
+	registerRawAction("workflow.get", ActionDef{
 		Description:       "Get workflow snapshot",
 		RequiresCityScope: true,
+	}, func(s *Server, req *socketRequestEnvelope) (socketActionResult, *socketErrorEnvelope) {
+		var payload socketWorkflowGetPayload
+		if len(req.Payload) > 0 {
+			if err := json.Unmarshal(req.Payload, &payload); err != nil {
+				return socketActionResult{}, newSocketError(req.ID, "invalid", err.Error())
+			}
+		}
+		if payload.ID == "" {
+			return socketActionResult{}, newSocketError(req.ID, "invalid", "id is required")
+		}
+		if payload.ScopeKind != "" && payload.ScopeKind != "rig" && payload.ScopeKind != "city" {
+			return socketActionResult{}, newSocketError(req.ID, "invalid", "scope_kind must be 'rig' or 'city'")
+		}
+		snapshot, err := s.buildWorkflowSnapshot(payload.ID, payload.ScopeKind, payload.ScopeRef, req.dispatchIndex)
+		if err != nil {
+			return socketActionResult{}, socketErrorFor(req.ID, err)
+		}
+		return socketActionResult{Result: snapshot}, nil
 	})
 
 	RegisterAction("workflow.delete", ActionDef{

@@ -73,11 +73,12 @@ func init() {
 		return s.getBeadDeps(payload.ID)
 	})
 
-	// bead.create uses idempotency — leave on legacy switch.
-	RegisterMeta("bead.create", ActionDef{
+	RegisterAction("bead.create", ActionDef{
 		Description:       "Create a bead",
 		IsMutation:        true,
 		RequiresCityScope: true,
+	}, func(s *Server, p beadCreateRequest) (beads.Bead, error) {
+		return s.createBead(p)
 	})
 
 	RegisterAction("bead.close", ActionDef{
