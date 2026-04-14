@@ -1,11 +1,13 @@
 package api
 
+import "context"
+
 func init() {
 	RegisterVoidAction("convoys.list", ActionDef{
 		Description:       "List convoys",
 		RequiresCityScope: true,
 		SupportsWatch:     true,
-	}, func(s *Server) (listResponse, error) {
+	}, func(_ context.Context, s *Server) (listResponse, error) {
 		items := s.listConvoys()
 		return listResponse{Items: items, Total: len(items)}, nil
 	})
@@ -13,7 +15,7 @@ func init() {
 	RegisterAction("convoy.get", ActionDef{
 		Description:       "Get convoy details",
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketIDPayload) (map[string]any, error) {
+	}, func(_ context.Context, s *Server, payload socketIDPayload) (map[string]any, error) {
 		return s.getConvoySnapshot(payload.ID)
 	})
 
@@ -21,7 +23,7 @@ func init() {
 		Description:       "Create a convoy",
 		IsMutation:        true,
 		RequiresCityScope: true,
-	}, func(s *Server, payload convoyCreateRequest) (any, error) {
+	}, func(_ context.Context, s *Server, payload convoyCreateRequest) (any, error) {
 		return s.createConvoy(payload)
 	})
 
@@ -29,7 +31,7 @@ func init() {
 		Description:       "Add items to a convoy",
 		IsMutation:        true,
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketConvoyItemsPayload) (map[string]string, error) {
+	}, func(_ context.Context, s *Server, payload socketConvoyItemsPayload) (map[string]string, error) {
 		if err := s.convoyAddItems(payload.ID, payload.Items); err != nil {
 			return nil, err
 		}
@@ -40,7 +42,7 @@ func init() {
 		Description:       "Remove items from a convoy",
 		IsMutation:        true,
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketConvoyItemsPayload) (map[string]string, error) {
+	}, func(_ context.Context, s *Server, payload socketConvoyItemsPayload) (map[string]string, error) {
 		if err := s.convoyRemoveItems(payload.ID, payload.Items); err != nil {
 			return nil, err
 		}
@@ -50,7 +52,7 @@ func init() {
 	RegisterAction("convoy.check", ActionDef{
 		Description:       "Check convoy completion",
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketIDPayload) (any, error) {
+	}, func(_ context.Context, s *Server, payload socketIDPayload) (any, error) {
 		return s.convoyCheck(payload.ID)
 	})
 
@@ -58,7 +60,7 @@ func init() {
 		Description:       "Close a convoy",
 		IsMutation:        true,
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketIDPayload) (map[string]string, error) {
+	}, func(_ context.Context, s *Server, payload socketIDPayload) (map[string]string, error) {
 		if err := s.convoyClose(payload.ID); err != nil {
 			return nil, err
 		}
@@ -69,7 +71,7 @@ func init() {
 		Description:       "Delete a convoy",
 		IsMutation:        true,
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketIDPayload) (map[string]string, error) {
+	}, func(_ context.Context, s *Server, payload socketIDPayload) (map[string]string, error) {
 		if err := s.convoyDelete(payload.ID); err != nil {
 			return nil, err
 		}

@@ -82,7 +82,7 @@ type RunOpts struct {
 // Run executes the main event loop. It calls readAndEmit on file changes
 // and writeKeepalive on keepalive ticks. Blocks until ctx is canceled.
 func (lw *logFileWatcher) Run(ctx context.Context, readAndEmit func(), writeKeepalive func(), opts ...RunOpts) {
-	keepalive := time.NewTicker(sseKeepalive)
+	keepalive := time.NewTicker(streamKeepalive)
 	defer keepalive.Stop()
 
 	// Stall detection: fires when no data arrives for stallTimeout,

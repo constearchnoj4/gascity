@@ -33,6 +33,10 @@ type socketRequestEnvelope struct {
 	Payload        json.RawMessage    `json:"payload,omitempty"`
 	Watch          *socketWatchParams `json:"watch,omitempty"`
 
+	// dispatchCtx is the request-scoped context, set by the dispatch framework.
+	// Handlers use this for cancellation when the WebSocket connection drops.
+	dispatchCtx context.Context `json:"-"`
+
 	// dispatchIndex is set by the dispatch framework before calling the handler.
 	// Handlers that need the event index (e.g., workflow.get for snapshot
 	// consistency) read this instead of calling latestIndex() again.
@@ -441,12 +445,14 @@ func serveWebSocket(w http.ResponseWriter, r *http.Request, handler socketHandle
 			dur := time.Since(start)
 			if apiErr != nil {
 				log.Printf("api: ws req id=%s action=%s latency=%s err=%s/%s", reqCopy.ID, reqCopy.Action, dur.Round(time.Microsecond), apiErr.Code, apiErr.Message)
+				telemetry.RecordWebSocketRequest(context.Background(), reqCopy.Action, apiErr.Code, float64(dur.Milliseconds()))
 				if err := sc.writeJSON(apiErr); err != nil {
 					return
 				}
 				continue
 			}
 			log.Printf("api: ws req id=%s action=%s latency=%s ok", reqCopy.ID, reqCopy.Action, dur.Round(time.Microsecond))
+			telemetry.RecordWebSocketRequest(context.Background(), reqCopy.Action, "", float64(dur.Milliseconds()))
 			if err := sc.writeJSON(socketResponseEnvelope{
 				Type:   "response",
 				ID:     reqCopy.ID,
@@ -464,12 +470,14 @@ func serveWebSocket(w http.ResponseWriter, r *http.Request, handler socketHandle
 			dur := time.Since(start)
 			if apiErr != nil {
 				log.Printf("api: ws req id=%s action=%s latency=%s err=%s/%s", reqCopy.ID, reqCopy.Action, dur.Round(time.Microsecond), apiErr.Code, apiErr.Message)
+				telemetry.RecordWebSocketRequest(context.Background(), reqCopy.Action, apiErr.Code, float64(dur.Milliseconds()))
 				if err := sc.writeJSON(apiErr); err != nil {
 					return
 				}
 				continue
 			}
 			log.Printf("api: ws req id=%s action=%s latency=%s ok", reqCopy.ID, reqCopy.Action, dur.Round(time.Microsecond))
+			telemetry.RecordWebSocketRequest(context.Background(), reqCopy.Action, "", float64(dur.Milliseconds()))
 			if err := sc.writeJSON(socketResponseEnvelope{
 				Type:   "response",
 				ID:     reqCopy.ID,
@@ -490,6 +498,7 @@ func serveWebSocket(w http.ResponseWriter, r *http.Request, handler socketHandle
 						ss.cancel()
 					}
 				}()
+				reqCopy.dispatchCtx = ss.ctx
 				start := time.Now()
 				result, apiErr := handler.handleSocketRequest(&reqCopy)
 

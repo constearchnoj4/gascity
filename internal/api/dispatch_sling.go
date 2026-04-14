@@ -7,8 +7,8 @@ func init() {
 		Description:       "Run sling dispatch",
 		IsMutation:        true,
 		RequiresCityScope: true,
-	}, func(s *Server, payload slingBody) (any, error) {
-		result, _, err := s.runSling(context.Background(), payload)
+	}, func(ctx context.Context, s *Server, payload slingBody) (any, error) {
+		result, _, err := s.runSling(ctx, payload)
 		if err != nil {
 			return nil, err
 		}

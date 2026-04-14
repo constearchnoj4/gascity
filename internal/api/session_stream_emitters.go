@@ -12,8 +12,8 @@ import (
 	"github.com/gastownhall/gascity/internal/sessionlog"
 )
 
-// sseKeepalive is the interval for stream keepalive ticks.
-const sseKeepalive = 15 * time.Second
+// streamKeepalive is the interval for stream keepalive ticks.
+const streamKeepalive = 15 * time.Second
 
 type sessionStreamEmitter struct {
 	event     func(eventType string, id uint64, data []byte) error
@@ -342,7 +342,7 @@ func (s *Server) streamSessionPeekRawWithEmitter(ctx context.Context, emitter se
 	sp := s.state.SessionProvider()
 	poll := time.NewTicker(outputStreamPollInterval)
 	defer poll.Stop()
-	keepalive := time.NewTicker(sseKeepalive)
+	keepalive := time.NewTicker(streamKeepalive)
 	defer keepalive.Stop()
 
 	var lastOutput string
@@ -416,7 +416,7 @@ func (s *Server) streamSessionPeekWithEmitter(ctx context.Context, emitter sessi
 	sp := s.state.SessionProvider()
 	poll := time.NewTicker(outputStreamPollInterval)
 	defer poll.Stop()
-	keepalive := time.NewTicker(sseKeepalive)
+	keepalive := time.NewTicker(streamKeepalive)
 	defer keepalive.Stop()
 
 	var lastOutput string

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 
@@ -12,7 +13,7 @@ func init() {
 		Description:       "List beads",
 		RequiresCityScope: true,
 		SupportsWatch:     true,
-	}, func(s *Server, payload socketBeadsListPayload) (listResponse, error) {
+	}, func(_ context.Context, s *Server, payload socketBeadsListPayload) (listResponse, error) {
 		items := s.listBeads(beads.ListQuery{
 			Status:   payload.Status,
 			Type:     payload.Type,
@@ -37,7 +38,7 @@ func init() {
 		Description:       "List ready beads",
 		RequiresCityScope: true,
 		SupportsWatch:     true,
-	}, func(s *Server) (listResponse, error) {
+	}, func(_ context.Context, s *Server) (listResponse, error) {
 		items, err := s.listReadyBeads()
 		if err != nil {
 			return listResponse{}, err
@@ -48,14 +49,14 @@ func init() {
 	RegisterAction("beads.graph", ActionDef{
 		Description:       "Get bead dependency graph",
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketBeadGraphPayload) (beadGraphResponseJSON, error) {
+	}, func(_ context.Context, s *Server, payload socketBeadGraphPayload) (beadGraphResponseJSON, error) {
 		return s.getBeadGraph(payload.RootID)
 	})
 
 	RegisterAction("bead.get", ActionDef{
 		Description:       "Get bead details",
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketIDPayload) (beads.Bead, error) {
+	}, func(_ context.Context, s *Server, payload socketIDPayload) (beads.Bead, error) {
 		bead, err := s.getBead(payload.ID)
 		if err != nil {
 			if errors.Is(err, beads.ErrNotFound) {
@@ -69,7 +70,7 @@ func init() {
 	RegisterAction("bead.deps", ActionDef{
 		Description:       "Get bead dependencies",
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketIDPayload) (map[string]any, error) {
+	}, func(_ context.Context, s *Server, payload socketIDPayload) (map[string]any, error) {
 		return s.getBeadDeps(payload.ID)
 	})
 
@@ -77,7 +78,7 @@ func init() {
 		Description:       "Create a bead",
 		IsMutation:        true,
 		RequiresCityScope: true,
-	}, func(s *Server, p beadCreateRequest) (beads.Bead, error) {
+	}, func(_ context.Context, s *Server, p beadCreateRequest) (beads.Bead, error) {
 		return s.createBead(p)
 	})
 
@@ -85,7 +86,7 @@ func init() {
 		Description:       "Close a bead",
 		IsMutation:        true,
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketIDPayload) (map[string]string, error) {
+	}, func(_ context.Context, s *Server, payload socketIDPayload) (map[string]string, error) {
 		return s.closeBead(payload.ID)
 	})
 
@@ -93,7 +94,7 @@ func init() {
 		Description:       "Update a bead",
 		IsMutation:        true,
 		RequiresCityScope: true,
-	}, func(s *Server, payload json.RawMessage) (map[string]string, error) {
+	}, func(_ context.Context, s *Server, payload json.RawMessage) (map[string]string, error) {
 		// Extract the ID from the raw JSON payload.
 		var idHolder socketIDPayload
 		if err := json.Unmarshal(payload, &idHolder); err != nil {
@@ -106,7 +107,7 @@ func init() {
 		Description:       "Reopen a bead",
 		IsMutation:        true,
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketIDPayload) (map[string]string, error) {
+	}, func(_ context.Context, s *Server, payload socketIDPayload) (map[string]string, error) {
 		return s.reopenBead(payload.ID)
 	})
 
@@ -114,7 +115,7 @@ func init() {
 		Description:       "Assign a bead",
 		IsMutation:        true,
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketBeadAssignPayload) (map[string]string, error) {
+	}, func(_ context.Context, s *Server, payload socketBeadAssignPayload) (map[string]string, error) {
 		return s.assignBead(payload.ID, payload.Assignee)
 	})
 
@@ -122,7 +123,7 @@ func init() {
 		Description:       "Delete a bead",
 		IsMutation:        true,
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketIDPayload) (map[string]string, error) {
+	}, func(_ context.Context, s *Server, payload socketIDPayload) (map[string]string, error) {
 		if err := s.deleteBead(payload.ID); err != nil {
 			return nil, err
 		}

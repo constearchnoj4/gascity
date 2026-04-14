@@ -45,7 +45,7 @@ var (
 // drive both runtime dispatch (JSON decode/encode) AND spec generation (the
 // reflect.Type is fed to the swaggest reflector). Handlers are pure business
 // logic — they never see envelopes.
-func RegisterAction[In, Out any](name string, def ActionDef, handler func(*Server, In) (Out, error)) {
+func RegisterAction[In, Out any](name string, def ActionDef, handler func(context.Context, *Server, In) (Out, error)) {
 	actionTableMu.Lock()
 	defer actionTableMu.Unlock()
 	actionTable[name] = &actionEntry{
@@ -63,7 +63,7 @@ func RegisterAction[In, Out any](name string, def ActionDef, handler func(*Serve
 					return socketActionResult{}, newSocketError(req.ID, "invalid", err.Error())
 				}
 			}
-			result, err := handler(s, input)
+			result, err := handler(req.dispatchCtx, s, input)
 			if err != nil {
 				return socketActionResult{}, socketErrorFor(req.ID, err)
 			}
@@ -73,7 +73,7 @@ func RegisterAction[In, Out any](name string, def ActionDef, handler func(*Serve
 }
 
 // RegisterVoidAction registers an action that takes no payload.
-func RegisterVoidAction[Out any](name string, def ActionDef, handler func(*Server) (Out, error)) {
+func RegisterVoidAction[Out any](name string, def ActionDef, handler func(context.Context, *Server) (Out, error)) {
 	actionTableMu.Lock()
 	defer actionTableMu.Unlock()
 	actionTable[name] = &actionEntry{
@@ -84,7 +84,7 @@ func RegisterVoidAction[Out any](name string, def ActionDef, handler func(*Serve
 		SupportsWatch:     def.SupportsWatch,
 		ResponseType:      reflect.TypeOf((*Out)(nil)).Elem(),
 		Handler: func(s *Server, req *socketRequestEnvelope) (socketActionResult, *socketErrorEnvelope) {
-			result, err := handler(s)
+			result, err := handler(req.dispatchCtx, s)
 			if err != nil {
 				return socketActionResult{}, socketErrorFor(req.ID, err)
 			}
@@ -189,7 +189,7 @@ func (s *Server) dispatchAction(req *socketRequestEnvelope) (socketActionResult,
 		if ep := s.state.EventProvider(); ep != nil {
 			bp := socketBlockingParams(req.Watch)
 			if bp.HasIndex {
-				result.Index = waitForChange(context.Background(), ep, bp)
+				result.Index = waitForChange(req.dispatchCtx, ep, bp)
 			}
 		}
 	}

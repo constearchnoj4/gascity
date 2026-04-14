@@ -12,7 +12,7 @@ func init() {
 		Description:       "List sessions",
 		RequiresCityScope: true,
 		SupportsWatch:     true,
-	}, func(s *Server, payload socketSessionsListPayload) (listResponse, error) {
+	}, func(_ context.Context, s *Server, payload socketSessionsListPayload) (listResponse, error) {
 		items, err := s.listSessionResponses(payload.State, payload.Template, payload.Peek)
 		if err != nil {
 			return listResponse{}, err
@@ -34,7 +34,7 @@ func init() {
 	RegisterAction("session.get", ActionDef{
 		Description:       "Get session details",
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketSessionTargetPayload) (sessionResponse, error) {
+	}, func(_ context.Context, s *Server, payload socketSessionTargetPayload) (sessionResponse, error) {
 		return s.getSessionResponse(payload.ID, payload.Peek)
 	})
 
@@ -42,8 +42,8 @@ func init() {
 		Description:       "Create a session",
 		IsMutation:        true,
 		RequiresCityScope: true,
-	}, func(s *Server, p sessionCreateRequest) (any, error) {
-		result, _, err := s.createSessionInternal(context.Background(), p, "")
+	}, func(ctx context.Context, s *Server, p sessionCreateRequest) (any, error) {
+		result, _, err := s.createSessionInternal(ctx, p, "")
 		return result, err
 	})
 
@@ -51,7 +51,7 @@ func init() {
 		Description:       "Suspend a session",
 		IsMutation:        true,
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketSessionTargetPayload) (map[string]string, error) {
+	}, func(_ context.Context, s *Server, payload socketSessionTargetPayload) (map[string]string, error) {
 		if err := s.suspendSessionTarget(payload.ID); err != nil {
 			return nil, err
 		}
@@ -62,7 +62,7 @@ func init() {
 		Description:       "Close a session",
 		IsMutation:        true,
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketSessionTargetPayload) (map[string]string, error) {
+	}, func(_ context.Context, s *Server, payload socketSessionTargetPayload) (map[string]string, error) {
 		if err := s.closeSessionTarget(payload.ID); err != nil {
 			return nil, err
 		}
@@ -73,7 +73,7 @@ func init() {
 		Description:       "Stop a session turn",
 		IsMutation:        true,
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketSessionTargetPayload) (map[string]string, error) {
+	}, func(_ context.Context, s *Server, payload socketSessionTargetPayload) (map[string]string, error) {
 		store := s.state.CityBeadStore()
 		if store == nil {
 			return nil, httpError{status: 503, code: "unavailable", message: "no bead store configured"}
@@ -93,15 +93,15 @@ func init() {
 		Description:       "Wake a suspended session",
 		IsMutation:        true,
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketSessionTargetPayload) (map[string]string, error) {
-		return s.wakeSessionTarget(context.Background(), payload.ID)
+	}, func(ctx context.Context, s *Server, payload socketSessionTargetPayload) (map[string]string, error) {
+		return s.wakeSessionTarget(ctx, payload.ID)
 	})
 
 	RegisterAction("session.rename", ActionDef{
 		Description:       "Rename a session",
 		IsMutation:        true,
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketSessionRenamePayload) (sessionResponse, error) {
+	}, func(_ context.Context, s *Server, payload socketSessionRenamePayload) (sessionResponse, error) {
 		return s.renameSessionTarget(payload.ID, payload.Title)
 	})
 
@@ -109,7 +109,7 @@ func init() {
 		Description:       "Respond to a session prompt",
 		IsMutation:        true,
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketSessionRespondPayload) (map[string]string, error) {
+	}, func(_ context.Context, s *Server, payload socketSessionRespondPayload) (map[string]string, error) {
 		return s.respondSessionTarget(payload.ID, sessionRespondRequest{
 			RequestID: payload.RequestID,
 			Action:    payload.Action,
@@ -122,14 +122,14 @@ func init() {
 		Description:       "Kill a session",
 		IsMutation:        true,
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketSessionTargetPayload) (map[string]string, error) {
+	}, func(_ context.Context, s *Server, payload socketSessionTargetPayload) (map[string]string, error) {
 		return s.killSessionTarget(payload.ID)
 	})
 
 	RegisterAction("session.pending", ActionDef{
 		Description:       "Get pending session requests",
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketSessionTargetPayload) (sessionPendingResponse, error) {
+	}, func(_ context.Context, s *Server, payload socketSessionTargetPayload) (sessionPendingResponse, error) {
 		return s.getSessionPending(payload.ID)
 	})
 
@@ -137,17 +137,17 @@ func init() {
 		Description:       "Submit a message to a session",
 		IsMutation:        true,
 		RequiresCityScope: true,
-	}, func(s *Server, p socketSessionSubmitPayload) (map[string]any, error) {
+	}, func(ctx context.Context, s *Server, p socketSessionSubmitPayload) (map[string]any, error) {
 		if p.Intent == "" {
 			p.Intent = session.SubmitIntentDefault
 		}
-		return s.submitSessionTarget(context.Background(), p.ID, p.Message, p.Intent)
+		return s.submitSessionTarget(ctx, p.ID, p.Message, p.Intent)
 	})
 
 	RegisterAction("session.transcript", ActionDef{
 		Description:       "Get session transcript",
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketSessionTranscriptPayload) (any, error) {
+	}, func(_ context.Context, s *Server, payload socketSessionTranscriptPayload) (any, error) {
 		return s.getSessionTranscript(payload.ID, sessionTranscriptQuery{
 			Tail:   payload.Turns,
 			Before: payload.Before,
@@ -159,7 +159,7 @@ func init() {
 		Description:       "Patch session metadata",
 		IsMutation:        true,
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketSessionPatchPayload) (any, error) {
+	}, func(_ context.Context, s *Server, payload socketSessionPatchPayload) (any, error) {
 		return s.patchSession(payload.ID, payload.Title, payload.Alias)
 	})
 
@@ -167,7 +167,7 @@ func init() {
 		Description:       "Send a user message to a session",
 		IsMutation:        true,
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketSessionMessagesPayload) (map[string]string, error) {
+	}, func(ctx context.Context, s *Server, payload socketSessionMessagesPayload) (map[string]string, error) {
 		if strings.TrimSpace(payload.Message) == "" {
 			return nil, httpError{status: 400, code: "invalid", message: "message is required"}
 		}
@@ -175,11 +175,11 @@ func init() {
 		if store == nil {
 			return nil, httpError{status: 503, code: "unavailable", message: "no bead store configured"}
 		}
-		id, err := s.resolveSessionIDMaterializingNamedWithContext(context.Background(), store, payload.ID)
+		id, err := s.resolveSessionIDMaterializingNamedWithContext(ctx, store, payload.ID)
 		if err != nil {
 			return nil, err
 		}
-		if err := s.sendUserMessageToSession(context.Background(), store, id, payload.Message); err != nil {
+		if err := s.sendUserMessageToSession(ctx, store, id, payload.Message); err != nil {
 			return nil, err
 		}
 		return map[string]string{"status": "accepted", "id": id}, nil
@@ -188,14 +188,14 @@ func init() {
 	RegisterAction("session.agents.list", ActionDef{
 		Description:       "List agents in a session",
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketSessionTargetPayload) (any, error) {
+	}, func(_ context.Context, s *Server, payload socketSessionTargetPayload) (any, error) {
 		return s.listSessionAgents(payload.ID)
 	})
 
 	RegisterAction("session.agent.get", ActionDef{
 		Description:       "Get agent details in a session",
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketSessionAgentGetPayload) (any, error) {
+	}, func(_ context.Context, s *Server, payload socketSessionAgentGetPayload) (any, error) {
 		return s.getSessionAgent(payload.ID, payload.AgentID)
 	})
 }

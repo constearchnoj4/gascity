@@ -1,11 +1,13 @@
 package api
 
+import "context"
+
 func init() {
 	RegisterAction("providers.list", ActionDef{
 		Description:       "List providers",
 		RequiresCityScope: true,
 		SupportsWatch:     true,
-	}, func(s *Server, payload socketProvidersListPayload) (listResponse, error) {
+	}, func(_ context.Context, s *Server, payload socketProvidersListPayload) (listResponse, error) {
 		items := s.listProviders(payload.View == "public")
 		return listResponse{Items: items, Total: len(items)}, nil
 	})
@@ -13,7 +15,7 @@ func init() {
 	RegisterAction("provider.get", ActionDef{
 		Description:       "Get provider details",
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketNamePayload) (any, error) {
+	}, func(_ context.Context, s *Server, payload socketNamePayload) (any, error) {
 		provider, err := s.getProvider(payload.Name)
 		if err != nil {
 			return nil, err
@@ -25,7 +27,7 @@ func init() {
 		Description:       "Create a provider",
 		IsMutation:        true,
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketProviderCreatePayload) (map[string]string, error) {
+	}, func(_ context.Context, s *Server, payload socketProviderCreatePayload) (map[string]string, error) {
 		sm, ok := s.state.(StateMutator)
 		if !ok {
 			return nil, httpError{status: 500, code: "internal", message: "mutations not supported"}
@@ -43,7 +45,7 @@ func init() {
 		Description:       "Update a provider",
 		IsMutation:        true,
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketProviderUpdatePayload) (map[string]string, error) {
+	}, func(_ context.Context, s *Server, payload socketProviderUpdatePayload) (map[string]string, error) {
 		sm, ok := s.state.(StateMutator)
 		if !ok {
 			return nil, httpError{status: 500, code: "internal", message: "mutations not supported"}
@@ -58,7 +60,7 @@ func init() {
 		Description:       "Delete a provider",
 		IsMutation:        true,
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketNamePayload) (map[string]string, error) {
+	}, func(_ context.Context, s *Server, payload socketNamePayload) (map[string]string, error) {
 		sm, ok := s.state.(StateMutator)
 		if !ok {
 			return nil, httpError{status: 500, code: "internal", message: "mutations not supported"}

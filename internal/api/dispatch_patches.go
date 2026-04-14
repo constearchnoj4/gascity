@@ -1,6 +1,8 @@
 package api
 
 import (
+	"context"
+
 	"github.com/gastownhall/gascity/internal/config"
 )
 
@@ -8,7 +10,7 @@ func init() {
 	RegisterVoidAction("patches.agents.list", ActionDef{
 		Description:       "List agent patches",
 		RequiresCityScope: true,
-	}, func(s *Server) (listResponse, error) {
+	}, func(_ context.Context, s *Server) (listResponse, error) {
 		cfg := s.state.Config()
 		patches := cfg.Patches.Agents
 		if patches == nil {
@@ -20,7 +22,7 @@ func init() {
 	RegisterAction("patches.agent.get", ActionDef{
 		Description:       "Get agent patch",
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketNamePayload) (config.AgentPatch, error) {
+	}, func(_ context.Context, s *Server, payload socketNamePayload) (config.AgentPatch, error) {
 		cfg := s.state.Config()
 		dir, base := config.ParseQualifiedName(payload.Name)
 		for _, p := range cfg.Patches.Agents {
@@ -35,7 +37,7 @@ func init() {
 		Description:       "Set agent patch",
 		IsMutation:        true,
 		RequiresCityScope: true,
-	}, func(s *Server, patch config.AgentPatch) (map[string]string, error) {
+	}, func(_ context.Context, s *Server, patch config.AgentPatch) (map[string]string, error) {
 		sm, ok := s.state.(StateMutator)
 		if !ok {
 			return nil, httpError{status: 500, code: "internal", message: "mutations not supported"}
@@ -57,7 +59,7 @@ func init() {
 		Description:       "Delete agent patch",
 		IsMutation:        true,
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketNamePayload) (map[string]string, error) {
+	}, func(_ context.Context, s *Server, payload socketNamePayload) (map[string]string, error) {
 		sm, ok := s.state.(StateMutator)
 		if !ok {
 			return nil, httpError{status: 500, code: "internal", message: "mutations not supported"}
@@ -71,7 +73,7 @@ func init() {
 	RegisterVoidAction("patches.rigs.list", ActionDef{
 		Description:       "List rig patches",
 		RequiresCityScope: true,
-	}, func(s *Server) (listResponse, error) {
+	}, func(_ context.Context, s *Server) (listResponse, error) {
 		cfg := s.state.Config()
 		patches := cfg.Patches.Rigs
 		if patches == nil {
@@ -83,7 +85,7 @@ func init() {
 	RegisterAction("patches.rig.get", ActionDef{
 		Description:       "Get rig patch",
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketNamePayload) (config.RigPatch, error) {
+	}, func(_ context.Context, s *Server, payload socketNamePayload) (config.RigPatch, error) {
 		cfg := s.state.Config()
 		for _, p := range cfg.Patches.Rigs {
 			if p.Name == payload.Name {
@@ -97,7 +99,7 @@ func init() {
 		Description:       "Set rig patch",
 		IsMutation:        true,
 		RequiresCityScope: true,
-	}, func(s *Server, patch config.RigPatch) (map[string]string, error) {
+	}, func(_ context.Context, s *Server, patch config.RigPatch) (map[string]string, error) {
 		sm, ok := s.state.(StateMutator)
 		if !ok {
 			return nil, httpError{status: 500, code: "internal", message: "mutations not supported"}
@@ -115,7 +117,7 @@ func init() {
 		Description:       "Delete rig patch",
 		IsMutation:        true,
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketNamePayload) (map[string]string, error) {
+	}, func(_ context.Context, s *Server, payload socketNamePayload) (map[string]string, error) {
 		sm, ok := s.state.(StateMutator)
 		if !ok {
 			return nil, httpError{status: 500, code: "internal", message: "mutations not supported"}
@@ -129,7 +131,7 @@ func init() {
 	RegisterVoidAction("patches.providers.list", ActionDef{
 		Description:       "List provider patches",
 		RequiresCityScope: true,
-	}, func(s *Server) (listResponse, error) {
+	}, func(_ context.Context, s *Server) (listResponse, error) {
 		cfg := s.state.Config()
 		patches := cfg.Patches.Providers
 		if patches == nil {
@@ -141,7 +143,7 @@ func init() {
 	RegisterAction("patches.provider.get", ActionDef{
 		Description:       "Get provider patch",
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketNamePayload) (config.ProviderPatch, error) {
+	}, func(_ context.Context, s *Server, payload socketNamePayload) (config.ProviderPatch, error) {
 		cfg := s.state.Config()
 		for _, p := range cfg.Patches.Providers {
 			if p.Name == payload.Name {
@@ -155,7 +157,7 @@ func init() {
 		Description:       "Set provider patch",
 		IsMutation:        true,
 		RequiresCityScope: true,
-	}, func(s *Server, patch config.ProviderPatch) (map[string]string, error) {
+	}, func(_ context.Context, s *Server, patch config.ProviderPatch) (map[string]string, error) {
 		sm, ok := s.state.(StateMutator)
 		if !ok {
 			return nil, httpError{status: 500, code: "internal", message: "mutations not supported"}
@@ -173,7 +175,7 @@ func init() {
 		Description:       "Delete provider patch",
 		IsMutation:        true,
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketNamePayload) (map[string]string, error) {
+	}, func(_ context.Context, s *Server, payload socketNamePayload) (map[string]string, error) {
 		sm, ok := s.state.(StateMutator)
 		if !ok {
 			return nil, httpError{status: 500, code: "internal", message: "mutations not supported"}

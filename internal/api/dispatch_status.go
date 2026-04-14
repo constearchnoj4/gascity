@@ -1,5 +1,7 @@
 package api
 
+import "context"
+
 func init() {
 	// cities.list is supervisor-only (handled inline in SupervisorMux.handleSocketRequest),
 	// but needs a table entry for capabilities and spec generation.
@@ -9,7 +11,7 @@ func init() {
 
 	RegisterVoidAction("health.get", ActionDef{
 		Description: "Health check",
-	}, func(s *Server) (map[string]any, error) {
+	}, func(_ context.Context, s *Server) (map[string]any, error) {
 		return s.healthResponse(), nil
 	})
 
@@ -17,7 +19,7 @@ func init() {
 		Description:       "City status snapshot",
 		RequiresCityScope: true,
 		SupportsWatch:     true,
-	}, func(s *Server) (any, error) {
+	}, func(_ context.Context, s *Server) (any, error) {
 		return s.statusSnapshot(), nil
 	})
 }

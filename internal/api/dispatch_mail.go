@@ -1,6 +1,8 @@
 package api
 
 import (
+	"context"
+
 	"github.com/gastownhall/gascity/internal/mail"
 )
 
@@ -9,7 +11,7 @@ func init() {
 		Description:       "List mail messages",
 		RequiresCityScope: true,
 		SupportsWatch:     true,
-	}, func(s *Server, payload socketMailListPayload) (listResponse, error) {
+	}, func(_ context.Context, s *Server, payload socketMailListPayload) (listResponse, error) {
 		items, err := s.listMailMessages(payload.Agent, payload.Status, payload.Rig)
 		if err != nil {
 			return listResponse{}, err
@@ -32,21 +34,21 @@ func init() {
 	RegisterAction("mail.get", ActionDef{
 		Description:       "Get a mail message",
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketMailGetPayload) (mail.Message, error) {
+	}, func(_ context.Context, s *Server, payload socketMailGetPayload) (mail.Message, error) {
 		return s.getMailMessage(payload.ID, payload.Rig)
 	})
 
 	RegisterAction("mail.count", ActionDef{
 		Description:       "Count mail messages",
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketMailCountPayload) (map[string]int, error) {
+	}, func(_ context.Context, s *Server, payload socketMailCountPayload) (map[string]int, error) {
 		return s.mailCount(payload.Agent, payload.Rig)
 	})
 
 	RegisterAction("mail.thread", ActionDef{
 		Description:       "Get mail thread",
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketMailThreadPayload) (listResponse, error) {
+	}, func(_ context.Context, s *Server, payload socketMailThreadPayload) (listResponse, error) {
 		result, err := s.listMailThread(payload.ID, payload.Rig)
 		if err != nil {
 			return listResponse{}, err
@@ -58,7 +60,7 @@ func init() {
 		Description:       "Mark mail as read",
 		IsMutation:        true,
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketMailGetPayload) (map[string]string, error) {
+	}, func(_ context.Context, s *Server, payload socketMailGetPayload) (map[string]string, error) {
 		return s.markMailRead(payload.ID, payload.Rig)
 	})
 
@@ -66,7 +68,7 @@ func init() {
 		Description:       "Mark mail as unread",
 		IsMutation:        true,
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketMailGetPayload) (map[string]string, error) {
+	}, func(_ context.Context, s *Server, payload socketMailGetPayload) (map[string]string, error) {
 		return s.markMailUnread(payload.ID, payload.Rig)
 	})
 
@@ -74,7 +76,7 @@ func init() {
 		Description:       "Archive a mail message",
 		IsMutation:        true,
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketMailGetPayload) (map[string]string, error) {
+	}, func(_ context.Context, s *Server, payload socketMailGetPayload) (map[string]string, error) {
 		return s.archiveMail(payload.ID, payload.Rig)
 	})
 
@@ -82,7 +84,7 @@ func init() {
 		Description:       "Reply to a mail message",
 		IsMutation:        true,
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketMailReplyPayload) (mail.Message, error) {
+	}, func(_ context.Context, s *Server, payload socketMailReplyPayload) (mail.Message, error) {
 		return s.replyMail(payload.ID, payload.Rig, mailReplyRequest{
 			From:    payload.From,
 			Subject: payload.Subject,
@@ -94,7 +96,7 @@ func init() {
 		Description:       "Send a mail message",
 		IsMutation:        true,
 		RequiresCityScope: true,
-	}, func(s *Server, p mailSendRequest) (mail.Message, error) {
+	}, func(_ context.Context, s *Server, p mailSendRequest) (mail.Message, error) {
 		return s.sendMail(p)
 	})
 
@@ -102,7 +104,7 @@ func init() {
 		Description:       "Delete a mail message",
 		IsMutation:        true,
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketMailGetPayload) (map[string]string, error) {
+	}, func(_ context.Context, s *Server, payload socketMailGetPayload) (map[string]string, error) {
 		if err := s.deleteMail(payload.ID, payload.Rig); err != nil {
 			return nil, err
 		}

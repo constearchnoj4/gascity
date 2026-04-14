@@ -517,6 +517,11 @@ func (sm *SupervisorMux) wrapAfterWriteWithCityWatch(ctx context.Context, cityNa
 		if m, ok := result.Result.(map[string]string); ok {
 			if subID := m["subscription_id"]; subID != "" {
 				sm.cityWatchers.watch(cityName, sess, subID)
+				// Cleanup when subscription ends (context cancelled).
+				go func() {
+					<-ctx.Done()
+					sm.cityWatchers.unwatch(cityName, subID)
+				}()
 			}
 		}
 	}

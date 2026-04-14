@@ -1,6 +1,9 @@
 package api
 
-import "encoding/json"
+import (
+	"context"
+	"encoding/json"
+)
 
 func init() {
 	// workflow.get needs the dispatch index for snapshot consistency.
@@ -32,7 +35,7 @@ func init() {
 		Description:       "Delete a workflow",
 		IsMutation:        true,
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketWorkflowDeletePayload) (any, error) {
+	}, func(_ context.Context, s *Server, payload socketWorkflowDeletePayload) (any, error) {
 		if payload.ID == "" {
 			return nil, httpError{status: 400, code: "invalid", message: "id is required"}
 		}

@@ -263,37 +263,6 @@ func supervisorServicePath(path string) bool {
 	return strings.HasPrefix(rest[idx:], "/svc/")
 }
 
-func (sm *SupervisorMux) handleCities(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, sm.citiesList())
-}
-
-// handleGlobalEventList returns events from all running cities, sorted
-// by timestamp, with each event tagged with its source city.
-func (sm *SupervisorMux) handleGlobalEventList(w http.ResponseWriter, r *http.Request) {
-	mux := sm.buildMultiplexer()
-
-	q := r.URL.Query()
-	filter := events.Filter{
-		Type:  q.Get("type"),
-		Actor: q.Get("actor"),
-	}
-	if v := q.Get("since"); v != "" {
-		if d, err := time.ParseDuration(v); err == nil {
-			filter.Since = time.Now().Add(-d)
-		}
-	}
-
-	evts, err := mux.ListAll(filter)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal", err.Error())
-		return
-	}
-	if evts == nil {
-		evts = []events.TaggedEvent{}
-	}
-	writeJSON(w, http.StatusOK, listResponse{Items: evts, Total: len(evts)})
-}
-
 // buildMultiplexer creates a Multiplexer from all running cities'
 // event providers.
 func (sm *SupervisorMux) buildMultiplexer() *events.Multiplexer {
@@ -321,7 +290,9 @@ func (sm *SupervisorMux) globalEventList(req *socketRequestEnvelope) (any, error
 	mux := sm.buildMultiplexer()
 	var payload socketEventsListPayload
 	if len(req.Payload) > 0 {
-		_ = json.Unmarshal(req.Payload, &payload)
+		if err := json.Unmarshal(req.Payload, &payload); err != nil {
+			return nil, httpError{status: 400, code: "invalid", message: err.Error()}
+		}
 	}
 	filter := events.Filter{Type: payload.Type, Actor: payload.Actor}
 	if payload.Since != "" {

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"time"
 
 	"github.com/gastownhall/gascity/internal/events"
@@ -11,7 +12,7 @@ func init() {
 		Description:       "List events",
 		RequiresCityScope: true,
 		SupportsWatch:     true,
-	}, func(s *Server, payload socketEventsListPayload) (listResponse, error) {
+	}, func(_ context.Context, s *Server, payload socketEventsListPayload) (listResponse, error) {
 		filter := events.Filter{Type: payload.Type, Actor: payload.Actor}
 		if payload.Since != "" {
 			d, err := time.ParseDuration(payload.Since)
@@ -43,7 +44,7 @@ func init() {
 		Description:       "Emit an event",
 		IsMutation:        true,
 		RequiresCityScope: true,
-	}, func(s *Server, payload eventEmitRequest) (map[string]string, error) {
+	}, func(_ context.Context, s *Server, payload eventEmitRequest) (map[string]string, error) {
 		if payload.Type == "" {
 			return nil, httpError{status: 400, code: "invalid", message: "type is required"}
 		}

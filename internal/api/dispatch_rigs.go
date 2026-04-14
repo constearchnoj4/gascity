@@ -1,6 +1,8 @@
 package api
 
 import (
+	"context"
+
 	"github.com/gastownhall/gascity/internal/config"
 )
 
@@ -9,7 +11,7 @@ func init() {
 		Description:       "List rigs",
 		RequiresCityScope: true,
 		SupportsWatch:     true,
-	}, func(s *Server) (listResponse, error) {
+	}, func(_ context.Context, s *Server) (listResponse, error) {
 		items := s.listRigResponses(false)
 		return listResponse{Items: items, Total: len(items)}, nil
 	})
@@ -17,7 +19,7 @@ func init() {
 	RegisterAction("rig.get", ActionDef{
 		Description:       "Get rig details",
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketNamePayload) (any, error) {
+	}, func(_ context.Context, s *Server, payload socketNamePayload) (any, error) {
 		resp, ok := s.getRigResponse(payload.Name, false)
 		if !ok {
 			return nil, httpError{status: 404, code: "not_found", message: "rig " + payload.Name + " not found"}
@@ -29,7 +31,7 @@ func init() {
 		Description:       "Suspend a rig",
 		IsMutation:        true,
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketNamePayload) (any, error) {
+	}, func(_ context.Context, s *Server, payload socketNamePayload) (any, error) {
 		result, err := s.applyRigAction(payload.Name, "suspend")
 		if err != nil {
 			return nil, err
@@ -41,7 +43,7 @@ func init() {
 		Description:       "Resume a rig",
 		IsMutation:        true,
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketNamePayload) (any, error) {
+	}, func(_ context.Context, s *Server, payload socketNamePayload) (any, error) {
 		result, err := s.applyRigAction(payload.Name, "resume")
 		if err != nil {
 			return nil, err
@@ -53,7 +55,7 @@ func init() {
 		Description:       "Restart a rig",
 		IsMutation:        true,
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketNamePayload) (any, error) {
+	}, func(_ context.Context, s *Server, payload socketNamePayload) (any, error) {
 		result, err := s.applyRigAction(payload.Name, "restart")
 		if err != nil {
 			return nil, err
@@ -65,7 +67,7 @@ func init() {
 		Description:       "Create a rig",
 		IsMutation:        true,
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketRigCreatePayload) (map[string]string, error) {
+	}, func(_ context.Context, s *Server, payload socketRigCreatePayload) (map[string]string, error) {
 		sm, ok := s.state.(StateMutator)
 		if !ok {
 			return nil, httpError{status: 500, code: "internal", message: "mutations not supported"}
@@ -83,7 +85,7 @@ func init() {
 		Description:       "Update a rig",
 		IsMutation:        true,
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketRigUpdatePayload) (map[string]string, error) {
+	}, func(_ context.Context, s *Server, payload socketRigUpdatePayload) (map[string]string, error) {
 		sm, ok := s.state.(StateMutator)
 		if !ok {
 			return nil, httpError{status: 500, code: "internal", message: "mutations not supported"}
@@ -98,7 +100,7 @@ func init() {
 		Description:       "Delete a rig",
 		IsMutation:        true,
 		RequiresCityScope: true,
-	}, func(s *Server, payload socketNamePayload) (map[string]string, error) {
+	}, func(_ context.Context, s *Server, payload socketNamePayload) (map[string]string, error) {
 		sm, ok := s.state.(StateMutator)
 		if !ok {
 			return nil, httpError{status: 500, code: "internal", message: "mutations not supported"}

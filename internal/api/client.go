@@ -359,15 +359,22 @@ func (c *Client) startSubscription(ctx context.Context, payload map[string]any, 
 	}
 	c.subs[resp.SubscriptionID] = callback
 	var kept []SubscriptionEvent
+	var buffered []SubscriptionEvent
 	for _, evt := range c.eventBuf {
 		if evt.SubscriptionID == resp.SubscriptionID {
-			callback(evt)
+			buffered = append(buffered, evt)
 		} else {
 			kept = append(kept, evt)
 		}
 	}
 	c.eventBuf = kept
 	c.subMu.Unlock()
+
+	// Call callbacks OUTSIDE the lock to prevent deadlock if callback
+	// calls Unsubscribe or starts another subscription.
+	for _, evt := range buffered {
+		callback(evt)
+	}
 
 	// Auto-cleanup when caller's ctx is cancelled.
 	go func() {
@@ -482,9 +489,13 @@ func (c *Client) wsReadLoop(conn *websocket.Conn) {
 				return true
 			})
 			c.wsMu.Lock()
-			c.wsConn = nil
-			c.wsFailCount++
-			c.wsBackoff = time.Now().Add(wsBackoffDuration(c.wsFailCount))
+			// Only clear wsConn if this reader's connection is still the active one.
+			// A concurrent reconnection may have already replaced it.
+			if c.wsConn == conn {
+				c.wsConn = nil
+				c.wsFailCount++
+				c.wsBackoff = time.Now().Add(wsBackoffDuration(c.wsFailCount))
+			}
 			c.wsMu.Unlock()
 			return
 		}
@@ -494,6 +505,7 @@ func (c *Client) wsReadLoop(conn *websocket.Conn) {
 			Type string `json:"type"`
 		}
 		if err := json.Unmarshal(rawBytes, &envelope); err != nil {
+			log.Printf("api: ws client: invalid envelope: %v", err)
 			continue
 		}
 
@@ -501,6 +513,7 @@ func (c *Client) wsReadLoop(conn *websocket.Conn) {
 		case "response":
 			var resp socketClientResponseEnvelope
 			if err := json.Unmarshal(rawBytes, &resp); err != nil {
+				log.Printf("api: ws client: invalid response frame: %v", err)
 				continue
 			}
 			if val, ok := c.pending.LoadAndDelete(resp.ID); ok {
@@ -509,6 +522,7 @@ func (c *Client) wsReadLoop(conn *websocket.Conn) {
 		case "error":
 			var resp socketErrorEnvelope
 			if err := json.Unmarshal(rawBytes, &resp); err != nil {
+				log.Printf("api: ws client: invalid error frame: %v", err)
 				continue
 			}
 			goErr := wsSocketErrorToGoError(resp)
@@ -518,6 +532,7 @@ func (c *Client) wsReadLoop(conn *websocket.Conn) {
 		case "event":
 			var evt SubscriptionEvent
 			if err := json.Unmarshal(rawBytes, &evt); err != nil {
+				log.Printf("api: ws client: invalid event frame: %v", err)
 				continue
 			}
 			c.subMu.Lock()
