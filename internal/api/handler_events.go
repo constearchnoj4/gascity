@@ -15,67 +15,6 @@ type eventEmitRequest struct {
 	Message string `json:"message,omitempty"`
 }
 
-func (s *Server) handleEventEmit(w http.ResponseWriter, r *http.Request) {
-	ep := s.state.EventProvider()
-	if ep == nil {
-		writeError(w, http.StatusServiceUnavailable, "internal", "events not enabled")
-		return
-	}
-
-	var body eventEmitRequest
-	if err := decodeBody(r, &body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid", err.Error())
-		return
-	}
-	if body.Type == "" {
-		writeError(w, http.StatusBadRequest, "invalid", "type is required")
-		return
-	}
-	if body.Actor == "" {
-		writeError(w, http.StatusBadRequest, "invalid", "actor is required")
-		return
-	}
-
-	ep.Record(events.Event{
-		Type:    body.Type,
-		Actor:   body.Actor,
-		Subject: body.Subject,
-		Message: body.Message,
-	})
-	writeJSON(w, http.StatusCreated, map[string]string{"status": "recorded"})
-}
-
-func (s *Server) handleEventList(w http.ResponseWriter, r *http.Request) {
-	bp := parseBlockingParams(r)
-	if bp.isBlocking() {
-		waitForChange(r.Context(), s.state.EventProvider(), bp)
-	}
-
-	filter, err := parseEventFilter(r)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid", err.Error())
-		return
-	}
-	evts, err := s.listEvents(filter)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal", err.Error())
-		return
-	}
-	pp := parsePagination(r, 100)
-	if !pp.IsPaging {
-		if pp.Limit < len(evts) {
-			evts = evts[:pp.Limit]
-		}
-		writeListJSON(w, s.latestIndex(), evts, len(evts))
-		return
-	}
-	page, total, nextCursor := paginate(evts, pp)
-	if page == nil {
-		page = []events.Event{}
-	}
-	writePagedJSON(w, s.latestIndex(), page, total, nextCursor)
-}
-
 func parseEventFilter(r *http.Request) (events.Filter, error) {
 	q := r.URL.Query()
 	filter := events.Filter{
@@ -106,4 +45,3 @@ func (s *Server) listEvents(filter events.Filter) ([]events.Event, error) {
 	}
 	return evts, nil
 }
-

@@ -24,40 +24,6 @@ type beadCreateRequest struct {
 	Labels      []string `json:"labels"`
 }
 
-func (s *Server) handleBeadList(w http.ResponseWriter, r *http.Request) {
-	bp := parseBlockingParams(r)
-	if bp.isBlocking() {
-		waitForChange(r.Context(), s.state.EventProvider(), bp)
-	}
-
-	q := r.URL.Query()
-	qStatus := q.Get("status")
-	qType := q.Get("type")
-	qLabel := q.Get("label")
-	qAssignee := q.Get("assignee")
-	qRig := q.Get("rig")
-	pp := parsePagination(r, 50)
-
-	all := s.listBeads(beads.ListQuery{
-		Status:   qStatus,
-		Type:     qType,
-		Label:    qLabel,
-		Assignee: qAssignee,
-	}, qRig, r)
-	if !pp.IsPaging {
-		if pp.Limit < len(all) {
-			all = all[:pp.Limit]
-		}
-		writeListJSON(w, s.latestIndex(), all, len(all))
-		return
-	}
-	page, total, nextCursor := paginate(all, pp)
-	if page == nil {
-		page = []beads.Bead{}
-	}
-	writePagedJSON(w, s.latestIndex(), page, total, nextCursor)
-}
-
 func (s *Server) listBeads(query beads.ListQuery, rig string, r *http.Request) []beads.Bead {
 	if !query.HasFilter() {
 		query.AllowScan = true
@@ -89,20 +55,6 @@ func (s *Server) listBeads(query beads.ListQuery, rig string, r *http.Request) [
 	return all
 }
 
-func (s *Server) handleBeadReady(w http.ResponseWriter, r *http.Request) {
-	bp := parseBlockingParams(r)
-	if bp.isBlocking() {
-		waitForChange(r.Context(), s.state.EventProvider(), bp)
-	}
-
-	all, err := s.listReadyBeads()
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal", err.Error())
-		return
-	}
-	writeListJSON(w, s.latestIndex(), all, len(all))
-}
-
 func (s *Server) listReadyBeads() ([]beads.Bead, error) {
 	stores := s.state.BeadStores()
 	rigNames := sortedRigNames(stores)
@@ -121,20 +73,6 @@ func (s *Server) listReadyBeads() ([]beads.Bead, error) {
 	return all, nil
 }
 
-func (s *Server) handleBeadGet(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	b, err := s.getBead(id)
-	if err != nil {
-		if errors.Is(err, beads.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "not_found", "bead "+id+" not found")
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "internal", err.Error())
-		return
-	}
-	writeIndexJSON(w, s.latestIndex(), b)
-}
-
 func (s *Server) getBead(id string) (beads.Bead, error) {
 	for _, store := range s.beadStoresForID(id) {
 		b, err := store.Get(id)
@@ -147,20 +85,6 @@ func (s *Server) getBead(id string) (beads.Bead, error) {
 		return b, nil
 	}
 	return beads.Bead{}, beads.ErrNotFound
-}
-
-func (s *Server) handleBeadDeps(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	resp, err := s.getBeadDeps(id)
-	if err != nil {
-		if errors.Is(err, beads.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "not_found", "bead "+id+" not found")
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "internal", err.Error())
-		return
-	}
-	writeIndexJSON(w, s.latestIndex(), resp)
 }
 
 func (s *Server) getBeadDeps(id string) (map[string]any, error) {
@@ -214,38 +138,6 @@ func appendMetadataAttachedChildren(store beads.Store, parent beads.Bead, childr
 	return children
 }
 
-func (s *Server) handleBeadCreate(w http.ResponseWriter, r *http.Request) {
-	var body beadCreateRequest
-	if err := decodeBody(r, &body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid", err.Error())
-		return
-	}
-
-	// Idempotency check — key is scoped by method+path to prevent cross-endpoint collisions.
-	idemKey := scopedIdemKey(r, r.Header.Get("Idempotency-Key"))
-	var bodyHash string
-	if idemKey != "" {
-		bodyHash = hashBody(body)
-		if s.idem.handleIdempotent(w, idemKey, bodyHash) {
-			return
-		}
-	}
-
-	b, err := s.createBead(body)
-	if err != nil {
-		s.idem.unreserve(idemKey)
-		if herrStatus(err) != 0 {
-			herr := asHTTPError(err)
-			writeStructuredError(w, herr.status, herr.code, herr.message, herr.details)
-		} else {
-			writeError(w, http.StatusInternalServerError, "internal", err.Error())
-		}
-		return
-	}
-	s.idem.storeResponse(idemKey, bodyHash, http.StatusCreated, b)
-	writeJSON(w, http.StatusCreated, b)
-}
-
 func (s *Server) createBead(body beadCreateRequest) (beads.Bead, error) {
 	if body.Title == "" {
 		return beads.Bead{}, httpError{status: http.StatusBadRequest, code: "invalid", message: "title is required"}
@@ -264,20 +156,6 @@ func (s *Server) createBead(body beadCreateRequest) (beads.Bead, error) {
 	})
 }
 
-func (s *Server) handleBeadClose(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	resp, err := s.closeBead(id)
-	if err != nil {
-		if errors.Is(err, beads.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "not_found", "bead "+id+" not found")
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "internal", err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, resp)
-}
-
 func (s *Server) closeBead(id string) (map[string]string, error) {
 	for _, store := range s.beadStoresForID(id) {
 		if err := store.Close(id); err != nil {
@@ -289,30 +167,6 @@ func (s *Server) closeBead(id string) (map[string]string, error) {
 		return map[string]string{"status": "closed"}, nil
 	}
 	return nil, beads.ErrNotFound
-}
-
-func (s *Server) handleBeadUpdate(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	payload, err := decodeBodyBytes(r)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid", err.Error())
-		return
-	}
-	resp, err := s.updateBead(id, payload)
-	if err != nil {
-		if errors.Is(err, beads.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "not_found", "bead "+id+" not found")
-			return
-		}
-		if herrStatus(err) != 0 {
-			herr := asHTTPError(err)
-			writeStructuredError(w, herr.status, herr.code, herr.message, herr.details)
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "internal", err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) updateBead(id string, payload []byte) (map[string]string, error) {
@@ -367,46 +221,6 @@ func (s *Server) updateBead(id string, payload []byte) (map[string]string, error
 	return nil, beads.ErrNotFound
 }
 
-func (s *Server) handleBeadReopen(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	resp, err := s.reopenBead(id)
-	if err != nil {
-		if errors.Is(err, beads.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "not_found", "bead "+id+" not found")
-			return
-		}
-		if herrStatus(err) != 0 {
-			herr := asHTTPError(err)
-			writeError(w, herr.status, herr.code, herr.message)
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "internal", err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, resp)
-}
-
-func (s *Server) handleBeadAssign(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	var body struct {
-		Assignee string `json:"assignee"`
-	}
-	if err := decodeBody(r, &body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid", err.Error())
-		return
-	}
-	resp, err := s.assignBead(id, body.Assignee)
-	if err != nil {
-		if errors.Is(err, beads.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "not_found", "bead "+id+" not found")
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "internal", err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, resp)
-}
-
 func (s *Server) reopenBead(id string) (map[string]string, error) {
 	status := "open"
 	for _, store := range s.beadStoresForID(id) {
@@ -452,15 +266,6 @@ func (s *Server) deleteBead(id string) error {
 		return nil
 	}
 	return beads.ErrNotFound
-}
-
-func (s *Server) handleBeadDelete(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	if err := s.deleteBead(id); err != nil {
-		writeStoreError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
 // findStore returns the bead store for the given rig. If rig is empty, returns
@@ -603,25 +408,6 @@ type beadGraphResponseJSON struct {
 	Root  beads.Bead            `json:"root"`
 	Beads []beads.Bead          `json:"beads"`
 	Deps  []workflowDepResponse `json:"deps"`
-}
-
-func (s *Server) handleBeadGraph(w http.ResponseWriter, r *http.Request) {
-	rootID := r.PathValue("rootID")
-	resp, err := s.getBeadGraph(rootID)
-	if err != nil {
-		if herrStatus(err) != 0 {
-			herr := asHTTPError(err)
-			writeError(w, herr.status, herr.code, herr.message)
-			return
-		}
-		if errors.Is(err, beads.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "not_found", "bead "+rootID+" not found")
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "internal", err.Error())
-		return
-	}
-	writeIndexJSON(w, s.latestIndex(), resp)
 }
 
 func (s *Server) getBeadGraph(rootID string) (beadGraphResponseJSON, error) {

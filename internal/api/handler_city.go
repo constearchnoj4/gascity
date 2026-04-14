@@ -2,7 +2,6 @@ package api
 
 import (
 	"net/http"
-	"strings"
 	"time"
 )
 
@@ -18,37 +17,9 @@ type cityGetResponse struct {
 	RigCount        int    `json:"rig_count"`
 }
 
-func (s *Server) handleCityGet(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, s.cityGet())
-}
-
 // cityPatchRequest is the JSON body for PATCH /v0/city.
 type cityPatchRequest struct {
 	Suspended *bool `json:"suspended,omitempty"`
-}
-
-func (s *Server) handleCityPatch(w http.ResponseWriter, r *http.Request) {
-	var body cityPatchRequest
-	if err := decodeBody(r, &body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid", err.Error())
-		return
-	}
-
-	if body.Suspended == nil {
-		writeError(w, http.StatusBadRequest, "invalid", "no fields to update")
-		return
-	}
-
-	err := s.patchCitySuspended(*body.Suspended)
-	if err != nil {
-		if strings.Contains(err.Error(), "validating") {
-			writeError(w, http.StatusBadRequest, "invalid", err.Error())
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "internal", err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 func (s *Server) cityGet() cityGetResponse {

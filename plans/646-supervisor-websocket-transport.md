@@ -2,43 +2,20 @@
 
 ## Summary
 
-Issue #646 replaces the HTTP/SSE API surface with WebSocket as the primary transport. This is a public API that external third-party clients build against.
+Issue #646 should be implemented as a phased transport migration, not as a single PR that deletes the entire HTTP/SSE surface at once.
 
-### Transport exclusivity
+The goal is to make WebSocket the primary transport for supervisor-aware clients while preserving the current product architecture:
 
-Every endpoint is **WS-only** or **HTTP-only**, never both. When migration is complete:
+- CLI and other Go clients move from HTTP/SSE to a typed WebSocket client
+- the dashboard server becomes the WebSocket client upstream to the supervisor
+- the browser remains HTMX + server-rendered HTML and keeps talking to the dashboard server, not directly to the supervisor
+- operational HTTP endpoints and non-client mounts stay on HTTP where that still makes sense
 
-- **~95% of endpoints move to WS-only** via `GET /v0/ws`
-- **~5% remain HTTP-only** (justified operational endpoints)
-- **Zero SSE endpoints** — all streaming moves to WS subscriptions
-- **Zero duplicate surfaces** — no endpoint exists on both transports
+The implementation should ship with a machine-readable protocol contract:
 
-### HTTP survivors (justified)
-
-| Endpoint | Justification |
-|----------|--------------|
-| `GET /health` | K8s/LB probe — probes can't do WS upgrade |
-| `GET /v0/readiness` | Operational probe |
-| `GET /v0/provider-readiness` | Operational probe |
-| `POST /v0/city` | Process manager registration, not client API |
-| `/svc/*` | TCP/HTTP proxy passthrough to workspace services |
-| `/debug/pprof/*` | Go runtime profiling, developer tool |
-| `GET /v0/ws` | WS upgrade endpoint (inherently HTTP) |
-| `GET /v0/asyncapi.yaml` | Auto-generated spec discovery — clients need contract before WS connect |
-| `GET /v0/openapi.yaml` | Auto-generated spec discovery — clients need contract before WS connect |
-
-### Architecture
-
-- CLI and other Go clients use a persistent WebSocket client with auto-reconnect and exponential backoff. No HTTP fallback.
-- The browser connects directly to the supervisor's `/v0/ws` endpoint. No SSE proxy.
-- The dashboard server is reduced to serving static files only — zero API endpoints. All data fetching, mutations, and streaming go directly from browser to supervisor via WS.
-- External third-party clients connect via WS and use the same protocol.
-
-### Protocol contract
-
-- AsyncAPI (WS) and OpenAPI (HTTP) specs auto-generated from annotated Go types as a single source of truth
-- Specs served at well-known endpoints for client discovery
-- Go types are the source of truth; specs are derived, not hand-written
+- AsyncAPI for the WebSocket protocol
+- Modelina for shared DTO/message model generation
+- hand-written Go transport/runtime logic on top of that contract
 
 ## Implementation Guardrails
 
@@ -76,14 +53,13 @@ This preserves current client behavior, because today callers can hit either:
 
 ### Dashboard architecture
 
-The dashboard browser connects directly to the supervisor’s `/v0/ws` endpoint. The dashboard server is reduced to a static file server with zero API endpoints.
+Do not convert the dashboard browser to a browser-direct supervisor WebSocket client in this issue.
 
-- Browser opens WS connection to supervisor and uses the same protocol as Go clients
-- All 17 existing `/api/*` dashboard proxy endpoints are eliminated
-- `/api/run` (subprocess command execution) is eliminated — browser calls supervisor WS actions directly
-- Server-side HTML template rendering is eliminated — browser renders from JSON
-- SSE (`EventSource`) is eliminated — browser uses WS subscriptions
-- The dashboard server serves only static files (JS, CSS, HTML)
+The dashboard is currently HTMX + server-rendered HTML with server-side data fetching and SSE fan-out. Replacing that with direct browser WebSocket access would turn 646 into a dashboard rewrite. Instead:
+
+- keep the browser-to-dashboard-server boundary intact
+- migrate the dashboard server’s upstream transport from HTTP/SSE to WebSocket
+- preserve the dashboard’s existing browser-facing HTMX/SSE behavior until a separate dashboard architecture effort exists
 
 ### Protocol framing
 
@@ -182,7 +158,6 @@ Session stream subscriptions need explicit parameters and completion rules:
 - support the current session stream format modes rather than assuming one generic shape
 - closed sessions emit a bounded snapshot/terminal sequence and then complete instead of remaining live forever
 - live sessions remain open and continue streaming updates with normal cursor semantics
-- `turns: N` returns the most recent N turns (0=all, 1=latest turn, 5=latest 5 turns). Used consistently for both `session.transcript` (one-shot fetch) and `subscription.start kind=session.stream` (live streaming with initial snapshot). Replaces HTTP `?tail=N`.
 
 ## Migration Scope
 
@@ -211,55 +186,9 @@ The implementation can migrate these in phases, but the plan must inventory them
 
 ### Out of scope for #646
 
+- dashboard browser rewrite into a client-rendered SPA
 - new remote mutation auth model for non-localhost supervisor access
-
-### Route disposition matrix
-
-Every former HTTP route is classified as **WS-only** (migrated), **HTTP-only** (justified survivor), or **Removed** (dead).
-
-#### HTTP-only survivors (8 routes)
-
-| Route | Justification |
-|-------|--------------|
-| `GET /v0/ws` | WS upgrade endpoint (inherently HTTP) |
-| `GET /health` | K8s/LB probe — probes can't do WS upgrade |
-| `GET /v0/readiness` | Operational probe |
-| `GET /v0/provider-readiness` | Operational probe |
-| `POST /v0/city` | Process manager registration, not client API |
-| `/svc/*` | TCP/HTTP proxy passthrough to workspace services |
-| `GET /v0/asyncapi.yaml` | Auto-generated spec discovery — clients need contract before WS connect |
-| `GET /v0/openapi.yaml` | Auto-generated spec discovery — clients need contract before WS connect |
-
-#### WS-only actions (119 actions)
-
-| Domain | WS Actions |
-|--------|-----------|
-| Health/Status | `health.get`, `status.get` |
-| City/Config | `city.get`, `city.patch`, `config.get`, `config.explain`, `config.validate`, `cities.list` |
-| Agents | `agents.list`, `agent.get`, `agent.create`, `agent.update`, `agent.delete`, `agent.suspend`, `agent.resume` |
-| Rigs | `rigs.list`, `rig.get`, `rig.create`, `rig.update`, `rig.delete`, `rig.suspend`, `rig.resume`, `rig.restart` |
-| Providers | `providers.list`, `provider.get`, `provider.create`, `provider.update`, `provider.delete` |
-| Beads | `beads.list`, `beads.ready`, `beads.graph`, `bead.get`, `bead.deps`, `bead.create`, `bead.close`, `bead.update`, `bead.reopen`, `bead.assign`, `bead.delete` |
-| Mail | `mail.list`, `mail.get`, `mail.count`, `mail.thread`, `mail.read`, `mail.mark_unread`, `mail.archive`, `mail.reply`, `mail.send`, `mail.delete` |
-| Sessions | `sessions.list`, `session.get`, `session.create`, `session.patch`, `session.submit`, `session.messages`, `session.stop`, `session.kill`, `session.suspend`, `session.close`, `session.wake`, `session.rename`, `session.respond`, `session.pending`, `session.transcript`, `session.agents.list`, `session.agent.get` |
-| Convoys | `convoys.list`, `convoy.get`, `convoy.create`, `convoy.add`, `convoy.remove`, `convoy.check`, `convoy.close`, `convoy.delete` |
-| Events | `events.list`, `event.emit` |
-| Orders | `orders.list`, `orders.check`, `orders.feed`, `orders.history`, `order.get`, `order.enable`, `order.disable`, `order.history.detail` |
-| Formulas | `formulas.list`, `formulas.feed`, `formula.get`, `formula.runs` |
-| Workflows | `workflow.get`, `workflow.delete` |
-| Sling | `sling.run` |
-| Services | `services.list`, `service.get`, `service.restart` |
-| Packs | `packs.list` |
-| Patches | `patches.agents.list`, `patches.agent.get`, `patches.agents.set`, `patches.agent.delete`, `patches.rigs.list`, `patches.rig.get`, `patches.rigs.set`, `patches.rig.delete`, `patches.providers.list`, `patches.provider.get`, `patches.providers.set`, `patches.provider.delete` |
-| ExtMsg | `extmsg.inbound`, `extmsg.outbound`, `extmsg.bindings.list`, `extmsg.bind`, `extmsg.unbind`, `extmsg.groups.lookup`, `extmsg.groups.ensure`, `extmsg.participant.upsert`, `extmsg.participant.remove`, `extmsg.transcript.list`, `extmsg.transcript.ack`, `extmsg.adapters.list`, `extmsg.adapters.register`, `extmsg.adapters.unregister` |
-| Subscriptions | `subscription.start` (events, session.stream), `subscription.stop` |
-
-#### Removed (SSE endpoints)
-
-| Former Route | Replacement |
-|-------------|------------|
-| `GET /v0/events/stream` | `subscription.start {kind: "events"}` |
-| `GET /v0/session/{id}/stream` | `subscription.start {kind: "session.stream"}` |
+- replacing workspace service HTTP proxy mounts (`/svc/`) with WebSocket
 
 ## Implementation Phases
 
@@ -289,11 +218,8 @@ Every former HTTP route is classified as **WS-only** (migrated), **HTTP-only** (
 
 ### Phase 3: Go client migration
 
-- Write failing client parity tests first for all migrated `internal/api.Client` methods
-- Replace `internal/api.Client` HTTP transport with a persistent WebSocket client with auto-reconnect and exponential backoff (1s, 2s, 4s, 8s, 16s, 30s max)
-- **No HTTP fallback** — every method goes through WS or returns an error
-- Add subscription API to Go client: `SubscribeEvents`, `SubscribeSessionStream`, `Unsubscribe`
-- Add `Close()` method for clean connection shutdown
+- Write failing client parity tests first for the migrated `internal/api.Client` methods and CLI fallback paths
+- Replace `internal/api.Client` HTTP transport with a persistent WebSocket client while preserving the existing high-level method surface where practical
 - Preserve current routing behavior:
   - standalone city-local client path
   - supervisor client path
@@ -304,28 +230,30 @@ Every former HTTP route is classified as **WS-only** (migrated), **HTTP-only** (
   - on per-city sockets, omitted `scope.city` means the implicit city
   - on per-city sockets, an explicit matching `scope.city` is accepted
   - on per-city sockets, a different `scope.city` is a validation error
+- Preserve fallback behavior where CLI mutations currently fall back to direct file mutation on connection/read-only failures
 
-### Phase 4: Dashboard rewrite to static SPA
+### Phase 4: Dashboard server migration
 
-- Rewrite `dashboard.js` as a WS-native SPA that connects directly to supervisor `/v0/ws`
-- Replace all `/api/*` fetch calls with WS actions
-- Replace `EventSource` SSE with WS subscriptions
-- Render all data client-side from JSON (eliminate server-side HTML templates)
-- Add WS reconnect with exponential backoff in browser JS
-- Strip the dashboard server to static file serving only — zero API endpoints
-- Eliminate `/api/run` — browser calls supervisor WS actions directly
-- Eliminate all 17 `/api/*` proxy endpoints
-- Eliminate server-rendered CSRF tokens — browser uses Origin-based WS auth
+- Write failing dashboard transport tests first for the upstream read and event paths
+- Replace the dashboard server’s upstream HTTP/SSE usage with the new WebSocket client
+- Keep browser-facing dashboard behavior stable:
+  - server-rendered HTML
+  - HTMX refreshes
+  - dashboard-local CSRF model
+  - dashboard SSE/browser update loop, unless a smaller internal refactor can remove it without browser architecture churn
+- The dashboard server, not the browser, is the supervisor WebSocket client in this issue
+- The dashboard `/api/run` subprocess execution path is not part of this migration; the migration target is the dashboard server’s upstream API fetches and SSE proxy path
 
-### Phase 5: Remove legacy HTTP/SSE endpoints
+### Phase 5: Remove legacy client transport
 
-- Remove all HTTP route registrations except the justified HTTP survivors (see table in Summary)
-- Remove all SSE streaming endpoints (`/v0/events/stream`, session stream, agent output stream, etc.)
-- Remove HTTP handler functions that are now WS-only
-- Remove HTTP fallback paths from Go client (`doGet`, `doMutation`, `socketGetAction`, `socketPostAction`)
-- Remove `httpClient` usage from `internal/api.Client` for API calls
-- Verify zero SSE endpoints remain in codebase
-- Verify zero duplicate HTTP+WS endpoints
+- After CLI and dashboard server are both running on WebSocket with parity, remove the old HTTP/SSE client paths
+- Keep only the HTTP endpoints that still make sense as operational/public surface:
+  - `/health`
+  - `/v0/readiness`
+  - `/v0/provider-readiness`
+  - `POST /v0/city`
+  - `/svc/` service proxy mounts
+  - pprof/debug endpoints
 
 ## Security and Access Model
 
@@ -334,9 +262,8 @@ Every former HTTP route is classified as **WS-only** (migrated), **HTTP-only** (
 - On WebSocket connect, advertise read-only capability in `hello`
 - Reject mutating actions when the server is in read-only mode
 - The current HTTP `X-GC-Request` CSRF mechanism does not apply to WebSocket frames; mutation authorization is established at handshake time and enforced for the lifetime of the connection
-- Browser-direct WS connections use the same Origin validation as Go clients — localhost enforcement at handshake time
-- Server-rendered CSRF tokens (`<meta name="dashboard-token">`) are eliminated along with the dashboard server API
-- The dashboard server no longer mediates browser access — the browser connects directly to the supervisor/city WS endpoint
+- For supervisor-hosted browser traffic, do not invent a new browser-direct mutation model in this issue
+- Keep the existing dashboard CSRF/browser protection model on the dashboard server boundary
 
 ## Operational Semantics
 
@@ -404,26 +331,24 @@ The WebSocket transport should emit enough telemetry to debug production failure
 
 ### Client migration tests
 
-- `internal/api.Client` parity tests for all WS-migrated methods
-- CLI command tests covering WS-only API routing paths
-- client reconnect with backoff tests
-- client subscription API tests (events, session stream)
+- `internal/api.Client` parity tests for migrated methods
+- CLI command tests covering API-routing paths and direct-mutation fallback
+- dashboard upstream transport tests proving the dashboard server can render current views from WebSocket-sourced data
 
 ### Migration safety tests
 
-- blocking query (watch) behavior preserves semantics over WS
-- standalone city-local server and supervisor mux both serve the same WS protocol correctly
+- HTTP and WebSocket paths produce equivalent results during coexistence phases
+- blocking query behavior preserves semantics
+- standalone city-local server and supervisor mux both serve the same protocol correctly
 - service proxy routes remain HTTP and unaffected
-- transport failure paths are observable (no silent masking)
+- transport failure paths are observable and preserve current CLI direct-mutation fallback behavior without silently masking errors
 
 ## Assumptions and Defaults
 
-- All 5 phases complete in this branch before merge
-- The dashboard browser connects directly to the supervisor WebSocket endpoint
-- The dashboard server is a static file server only — zero API endpoints
-- WebSocket is the exclusive client transport; HTTP remains only for justified operational endpoints
-- AsyncAPI + OpenAPI specs are auto-generated from annotated Go types (single source of truth)
-- The Go client auto-reconnects with exponential backoff; no HTTP fallback
-- Browser auth uses Origin-based WS validation (localhost enforcement); server-rendered CSRF tokens are eliminated
+- The correct implementation path is phased, not one giant cutover PR
+- The dashboard browser is not the direct supervisor WebSocket client for #646
+- The dashboard server is a supervisor client and should migrate upstream transport
+- WebSocket becomes the primary client transport, but HTTP remains where it is still the right operational interface
+- AsyncAPI + Modelina is the approved OSS contract/codegen direction
 - Fern is out of scope
 - `.env` is already handled elsewhere and is not part of this plan

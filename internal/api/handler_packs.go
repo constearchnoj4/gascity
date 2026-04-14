@@ -1,7 +1,6 @@
 package api
 
 import (
-	"net/http"
 	"sort"
 )
 
@@ -10,10 +9,6 @@ type packResponse struct {
 	Source string `json:"source,omitempty"`
 	Ref    string `json:"ref,omitempty"`
 	Path   string `json:"path,omitempty"`
-}
-
-func (s *Server) handlePackList(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"packs": s.listPacks()})
 }
 
 func (s *Server) listPacks() []packResponse {

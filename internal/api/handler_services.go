@@ -9,37 +9,6 @@ import (
 	"github.com/gastownhall/gascity/internal/workspacesvc"
 )
 
-func (s *Server) handleServiceList(w http.ResponseWriter, _ *http.Request) {
-	items := s.listServices()
-	writeListJSON(w, s.latestIndex(), items, len(items))
-}
-
-func (s *Server) handleServiceGet(w http.ResponseWriter, r *http.Request) {
-	item, err := s.getService(r.PathValue("name"))
-	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			writeError(w, http.StatusNotFound, "not_found", err.Error())
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "internal", err.Error())
-		return
-	}
-	writeIndexJSON(w, s.latestIndex(), item)
-}
-
-func (s *Server) handleServiceRestart(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-	if err := s.restartService(name); err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			writeError(w, http.StatusNotFound, "not_found", err.Error())
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "internal", err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "action": "restart", "service": name})
-}
-
 func (s *Server) listServices() []workspacesvc.Status {
 	reg := s.state.ServiceRegistry()
 	if reg == nil {

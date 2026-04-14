@@ -51,42 +51,6 @@ type sessionInfo struct {
 	Attached     bool       `json:"attached"`
 }
 
-func (s *Server) handleAgentList(w http.ResponseWriter, r *http.Request) {
-	bp := parseBlockingParams(r)
-	if bp.isBlocking() {
-		waitForChange(r.Context(), s.state.EventProvider(), bp)
-	}
-
-	wantPeek := r.URL.Query().Get("peek") == "true"
-
-	// Query filters.
-	qPool := r.URL.Query().Get("pool")
-	qRig := r.URL.Query().Get("rig")
-	qRunning := r.URL.Query().Get("running")
-	index := s.latestIndex()
-	cacheKey := ""
-	if !wantPeek {
-		cacheKey = responseCacheKey("agents", r)
-		if body, ok := s.cachedResponse(cacheKey, index); ok {
-			writeCachedJSON(w, r, index, body)
-			return
-		}
-	}
-
-	agents := s.listAgentResponses(qPool, qRig, qRunning, wantPeek)
-	resp := listResponse{Items: agents, Total: len(agents)}
-	if cacheKey == "" {
-		writeListJSON(w, index, agents, len(agents))
-		return
-	}
-	body, err := s.storeResponse(cacheKey, index, resp)
-	if err != nil {
-		writeListJSON(w, index, agents, len(agents))
-		return
-	}
-	writeCachedJSON(w, r, index, body)
-}
-
 func (s *Server) listAgentResponses(qPool, qRig, qRunning string, wantPeek bool) []agentResponse {
 	cfg := s.state.Config()
 	sp := s.state.SessionProvider()
@@ -114,42 +78,6 @@ func (s *Server) listAgentResponses(qPool, qRig, qRunning string, wantPeek bool)
 		agents = []agentResponse{}
 	}
 	return agents
-}
-
-func (s *Server) handleAgent(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-	if name == "" {
-		writeError(w, http.StatusBadRequest, "invalid", "agent name required")
-		return
-	}
-
-	cfg := s.state.Config()
-
-	// Try exact agent match first, then check for sub-resource suffix.
-	agentCfg, ok := findAgent(cfg, name)
-	if !ok {
-		// Not found as exact agent — check for sub-resource suffixes.
-		if after, found := strings.CutSuffix(name, "/output"); found {
-			s.handleAgentOutput(w, r, after)
-			return
-		}
-		writeError(w, http.StatusNotFound, "not_found", "agent "+name+" not found")
-		return
-	}
-
-	pool := ""
-	if isMultiSessionAgent(agentCfg) {
-		pool = agentCfg.QualifiedName()
-	}
-	resp, _ := s.buildExpandedAgentResponse(agentCfg, expandedAgent{
-		qualifiedName: name,
-		rig:           agentCfg.Dir,
-		pool:          pool,
-		suspended:     agentCfg.Suspended,
-		provider:      agentCfg.Provider,
-		description:   agentCfg.Description,
-	}, false, "")
-	writeIndexJSON(w, s.latestIndex(), resp)
 }
 
 func (s *Server) buildExpandedAgentResponse(agentCfg config.Agent, ea expandedAgent, wantPeek bool, qRunning string) (agentResponse, bool) {
@@ -223,40 +151,6 @@ func (s *Server) buildExpandedAgentResponse(agentCfg config.Agent, ea expandedAg
 	}
 
 	return resp, true
-}
-
-func (s *Server) handleAgentAction(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-
-	// Parse action suffix before validating agent name.
-	// Only config-level mutations (suspend/resume) are supported.
-	// Runtime operations (kill, drain, nudge, restart) moved to session APIs.
-	var action string
-	if after, found := strings.CutSuffix(name, "/suspend"); found {
-		name = after
-		action = "suspend"
-	} else if after, found := strings.CutSuffix(name, "/resume"); found {
-		name = after
-		action = "resume"
-	} else {
-		writeError(w, http.StatusNotFound, "not_found", "unknown agent action; runtime operations moved to /v0/session/{id}/*")
-		return
-	}
-
-	err := s.applyAgentAction(name, action)
-	if err != nil {
-		if strings.Contains(err.Error(), "mutations not supported") {
-			writeError(w, http.StatusNotImplemented, "internal", err.Error())
-			return
-		}
-		if strings.Contains(err.Error(), "not found") {
-			writeError(w, http.StatusNotFound, "not_found", err.Error())
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "internal", err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 func (s *Server) applyAgentAction(name, action string) error {

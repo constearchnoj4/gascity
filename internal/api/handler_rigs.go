@@ -32,17 +32,6 @@ type gitStatus struct {
 	Behind       int    `json:"behind"`
 }
 
-func (s *Server) handleRigList(w http.ResponseWriter, r *http.Request) {
-	bp := parseBlockingParams(r)
-	if bp.isBlocking() {
-		waitForChange(r.Context(), s.state.EventProvider(), bp)
-	}
-
-	wantGit := r.URL.Query().Get("git") == "true"
-	rigs := s.listRigResponses(wantGit)
-	writeListJSON(w, s.latestIndex(), rigs, len(rigs))
-}
-
 func (s *Server) listRigResponses(wantGit bool) []rigResponse {
 	cfg := s.state.Config()
 	sp := s.state.SessionProvider()
@@ -57,17 +46,6 @@ func (s *Server) listRigResponses(wantGit bool) []rigResponse {
 		rigs = append(rigs, resp)
 	}
 	return rigs
-}
-
-func (s *Server) handleRig(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-	wantGit := r.URL.Query().Get("git") == "true"
-	resp, ok := s.getRigResponse(name, wantGit)
-	if ok {
-		writeIndexJSON(w, s.latestIndex(), resp)
-		return
-	}
-	writeError(w, http.StatusNotFound, "not_found", "rig "+name+" not found")
 }
 
 func (s *Server) getRigResponse(name string, wantGit bool) (rigResponse, bool) {
@@ -85,42 +63,8 @@ func (s *Server) getRigResponse(name string, wantGit bool) (rigResponse, bool) {
 	return rigResponse{}, false
 }
 
-func (s *Server) handleRigAction(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-	action := r.PathValue("action")
-	resp, err := s.applyRigAction(name, action)
-	if err != nil {
-		if herrStatus(err) != 0 {
-			herr := asHTTPError(err)
-			writeError(w, herr.status, herr.code, herr.message)
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "internal", err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, resp)
-}
-
 // handleRigRestart kills all agents in a rig so the reconciler restarts them.
 // Uses sp.Stop() directly — no StateMutator dependency for runtime kills.
-func (s *Server) handleRigRestart(w http.ResponseWriter, name string) {
-	resp, err := s.restartRig(name)
-	if err != nil {
-		if herrStatus(err) != 0 {
-			herr := asHTTPError(err)
-			writeError(w, herr.status, herr.code, herr.message)
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "internal", err.Error())
-		return
-	}
-	httpStatus := http.StatusOK
-	if status, _ := resp["status"].(string); status == "failed" {
-		httpStatus = http.StatusInternalServerError
-	}
-	writeJSON(w, httpStatus, resp)
-}
-
 func (s *Server) applyRigAction(name, action string) (map[string]any, error) {
 	sm, ok := s.state.(StateMutator)
 	if !ok {

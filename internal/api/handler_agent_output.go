@@ -2,14 +2,10 @@ package api
 
 import (
 	"encoding/json"
-	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
-	"github.com/gastownhall/gascity/internal/config"
 	"github.com/gastownhall/gascity/internal/sessionlog"
-	workdirutil "github.com/gastownhall/gascity/internal/workdir"
 )
 
 // outputTurn is a single conversation turn in the unified output response.
@@ -17,145 +13,6 @@ type outputTurn struct {
 	Role      string `json:"role"`
 	Text      string `json:"text"`
 	Timestamp string `json:"timestamp,omitempty"`
-}
-
-// agentOutputResponse is the response for GET /v0/agent/{name}/output.
-type agentOutputResponse struct {
-	Agent      string                     `json:"agent"`
-	Format     string                     `json:"format"` // "conversation" or "text"
-	Turns      []outputTurn               `json:"turns"`
-	Pagination *sessionlog.PaginationInfo `json:"pagination,omitempty"`
-}
-
-// handleAgentOutput returns unified conversation output for an agent.
-// Tries structured session logs first, falls back to Peek().
-//
-// Query params:
-//   - tail: number of compaction segments to return (default 1, 0 = all)
-//   - before: message UUID cursor for loading older messages
-func (s *Server) handleAgentOutput(w http.ResponseWriter, r *http.Request, name string) {
-	cfg := s.state.Config()
-	agentCfg, ok := findAgent(cfg, name)
-	if !ok {
-		writeError(w, http.StatusNotFound, "not_found", "agent "+name+" not found")
-		return
-	}
-
-	// Try structured session log first.
-	resp, err := s.trySessionLogOutput(r, name, agentCfg)
-	if err != nil {
-		// Session file exists but failed to read — surface the error.
-		writeError(w, http.StatusInternalServerError, "internal", "reading session log: "+err.Error())
-		return
-	}
-	if resp != nil {
-		writeJSON(w, http.StatusOK, resp)
-		return
-	}
-
-	// No session file found — fall back to Peek() (raw terminal text).
-	s.peekFallbackOutput(w, name, cfg)
-}
-
-// trySessionLogOutput attempts to read structured conversation data from
-// a Claude JSONL session file. Returns (nil, nil) if no session file is
-// found (expected — triggers fallback). Returns (nil, err) if the file
-// exists but cannot be read (unexpected — surface to caller).
-func (s *Server) trySessionLogOutput(r *http.Request, name string, agentCfg config.Agent) (*agentOutputResponse, error) {
-	cfg := s.state.Config()
-	workDir := s.resolveAgentWorkDir(agentCfg, name)
-	if workDir == "" {
-		return nil, nil
-	}
-	provider := strings.TrimSpace(agentCfg.Provider)
-	if provider == "" && cfg != nil {
-		provider = strings.TrimSpace(cfg.Workspace.Provider)
-	}
-
-	searchPaths := s.sessionLogSearchPaths
-	if searchPaths == nil {
-		searchPaths = sessionlog.MergeSearchPaths(cfg.Daemon.ObservePaths)
-	}
-	path := sessionlog.FindSessionFileForProvider(searchPaths, provider, workDir)
-	if path == "" {
-		return nil, nil
-	}
-
-	tail := 1
-	if v := r.URL.Query().Get("tail"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
-			tail = n
-		}
-	}
-	before := r.URL.Query().Get("before")
-
-	var sess *sessionlog.Session
-	var err error
-	if before != "" {
-		sess, err = sessionlog.ReadProviderFileOlder(provider, path, tail, before)
-	} else {
-		sess, err = sessionlog.ReadProviderFile(provider, path, tail)
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	turns := make([]outputTurn, 0, len(sess.Messages))
-	for _, e := range sess.Messages {
-		turn := entryToTurn(e)
-		if turn.Text == "" {
-			continue
-		}
-		turns = append(turns, turn)
-	}
-
-	return &agentOutputResponse{
-		Agent:      name,
-		Format:     "conversation",
-		Turns:      turns,
-		Pagination: sess.Pagination,
-	}, nil
-}
-
-// peekFallbackOutput returns raw terminal text wrapped as a single turn.
-func (s *Server) peekFallbackOutput(w http.ResponseWriter, name string, cfg *config.City) {
-	sp := s.state.SessionProvider()
-	sessionName := agentSessionName(s.state.CityName(), name, cfg.Workspace.SessionTemplate)
-
-	if !sp.IsRunning(sessionName) {
-		writeError(w, http.StatusNotFound, "not_found", "agent "+name+" not running")
-		return
-	}
-
-	output, err := sp.Peek(sessionName, 100)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal", err.Error())
-		return
-	}
-
-	turns := []outputTurn{}
-	if output != "" {
-		turns = append(turns, outputTurn{Role: "output", Text: output})
-	}
-
-	writeJSON(w, http.StatusOK, agentOutputResponse{
-		Agent:  name,
-		Format: "text",
-		Turns:  turns,
-	})
-}
-
-// resolveAgentWorkDir returns the absolute working directory for an agent,
-// honoring work_dir template expansion.
-func (s *Server) resolveAgentWorkDir(a config.Agent, qualifiedName string) string {
-	cfg := s.state.Config()
-	return workdirutil.ResolveWorkDirPath(
-		s.state.CityPath(),
-		workdirutil.CityName(s.state.CityPath(), cfg),
-		qualifiedName,
-		a,
-		cfg.Rigs,
-	)
 }
 
 // entryToTurn converts a sessionlog Entry to a human-readable outputTurn.

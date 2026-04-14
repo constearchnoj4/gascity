@@ -1,8 +1,6 @@
 package api
 
 import (
-	"net/http"
-
 	"github.com/gastownhall/gascity/internal/config"
 	"github.com/gastownhall/gascity/internal/configedit"
 	"github.com/gastownhall/gascity/internal/workspacesvc"
@@ -56,10 +54,6 @@ type configPatchesResponse struct {
 	AgentCount    int `json:"agent_count"`
 	RigCount      int `json:"rig_count"`
 	ProviderCount int `json:"provider_count"`
-}
-
-func (s *Server) handleConfigGet(w http.ResponseWriter, _ *http.Request) {
-	writeIndexJSON(w, s.latestIndex(), s.configGet())
 }
 
 func (s *Server) configGet() configResponse {
@@ -123,12 +117,8 @@ func (s *Server) configGet() configResponse {
 	return resp
 }
 
-// handleConfigExplain returns the config with provenance annotations showing
+// configExplain returns the config with provenance annotations showing
 // where each resource originates: raw config, pack-derived, or patched.
-func (s *Server) handleConfigExplain(w http.ResponseWriter, _ *http.Request) {
-	writeIndexJSON(w, s.latestIndex(), s.configExplain())
-}
-
 func (s *Server) configExplain() map[string]any {
 	cfg := s.state.Config()
 	builtins := config.BuiltinProviders()
@@ -215,12 +205,8 @@ func (s *Server) configExplain() map[string]any {
 	}
 }
 
-// handleConfigValidate checks the current config for validation errors
+// configValidate checks the current config for validation errors
 // and semantic warnings without writing anything.
-func (s *Server) handleConfigValidate(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, s.configValidate())
-}
-
 func (s *Server) configValidate() map[string]any {
 	cfg := s.state.Config()
 

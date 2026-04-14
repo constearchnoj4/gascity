@@ -38,30 +38,6 @@ type slingResponse struct {
 // Replaceable in tests.
 var slingCommandRunner = runSlingCommand
 
-func (s *Server) handleSling(w http.ResponseWriter, r *http.Request) {
-	var body slingBody
-	if err := decodeBody(r, &body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid", err.Error())
-		return
-	}
-	if body.Target == "" {
-		writeError(w, http.StatusBadRequest, "invalid", "target agent or pool is required")
-		return
-	}
-
-	resp, status, err := s.runSling(r.Context(), body)
-	if err != nil {
-		if herrStatus(err) != 0 {
-			herr := asHTTPError(err)
-			writeStructuredError(w, herr.status, herr.code, herr.message, herr.details)
-		} else {
-			writeError(w, http.StatusInternalServerError, "internal", err.Error())
-		}
-		return
-	}
-	writeJSON(w, status, resp)
-}
-
 func (s *Server) runSling(ctx context.Context, body slingBody) (*slingResponse, int, error) {
 	cfg := s.state.Config()
 	agentCfg, ok := findAgent(cfg, body.Target)
