@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gastownhall/gascity/internal/beads"
 	"github.com/gastownhall/gascity/internal/config"
 	"github.com/gastownhall/gascity/internal/events"
 	"github.com/gastownhall/gascity/internal/runtime"
@@ -18,6 +19,118 @@ import (
 
 // Route-matrix parity tests use the former HTTP/SSE route names in the test
 // names and exercise the canonical WS replacements described in #646.
+
+func TestRouteMatrixParity_GET_v0_status_ViaWS(t *testing.T) {
+	state := newFakeState(t)
+	if err := state.sp.Start(context.Background(), "myrig--worker", runtime.Config{}); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	_, _, conn := wsSetup(t, state)
+
+	writeWSJSON(t, conn, wsRequestEnvelope{
+		Type:   "request",
+		ID:     "route-status-get",
+		Action: "status.get",
+	})
+
+	var resp wsResponseEnvelope
+	readWSJSON(t, conn, &resp)
+	if resp.Type != "response" || resp.ID != "route-status-get" {
+		t.Fatalf("response = %#v, want correlated response", resp)
+	}
+
+	var body statusResponse
+	if err := json.Unmarshal(resp.Result, &body); err != nil {
+		t.Fatalf("decode status: %v", err)
+	}
+	if body.Name != "test-city" {
+		t.Fatalf("status name = %q, want test-city", body.Name)
+	}
+	if body.AgentCount != 1 || body.RigCount != 1 || body.Running != 1 {
+		t.Fatalf("status counts = %+v, want agent_count=1 rig_count=1 running=1", body)
+	}
+}
+
+func TestRouteMatrixParity_GET_v0_agents_ViaWS(t *testing.T) {
+	state := newFakeState(t)
+	if err := state.sp.Start(context.Background(), "myrig--worker", runtime.Config{}); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	_, _, conn := wsSetup(t, state)
+
+	writeWSJSON(t, conn, wsRequestEnvelope{
+		Type:   "request",
+		ID:     "route-agents-list",
+		Action: "agents.list",
+	})
+
+	var resp wsResponseEnvelope
+	readWSJSON(t, conn, &resp)
+	if resp.Type != "response" || resp.ID != "route-agents-list" {
+		t.Fatalf("response = %#v, want correlated response", resp)
+	}
+
+	var body struct {
+		Items []agentResponse `json:"items"`
+		Total int             `json:"total"`
+	}
+	if err := json.Unmarshal(resp.Result, &body); err != nil {
+		t.Fatalf("decode agents.list: %v", err)
+	}
+	if body.Total != 1 {
+		t.Fatalf("total = %d, want 1", body.Total)
+	}
+	if len(body.Items) != 1 || body.Items[0].Name != "myrig/worker" {
+		t.Fatalf("items = %+v, want myrig/worker", body.Items)
+	}
+}
+
+func TestRouteMatrixParity_GET_v0_agent_name_ViaWS(t *testing.T) {
+	state := newSessionFakeState(t)
+	sessionName := "myrig--worker"
+	if err := state.sp.Start(context.Background(), sessionName, runtime.Config{}); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	info, err := state.cityBeadStore.Create(beads.Bead{
+		Type:   session.BeadType,
+		Labels: []string{session.LabelSession, "template:myrig/worker"},
+		Metadata: map[string]string{
+			"template":     "myrig/worker",
+			"session_name": sessionName,
+			"state":        "awake",
+		},
+	})
+	if err != nil {
+		t.Fatalf("create session bead: %v", err)
+	}
+	_, _, conn := wsSetup(t, state)
+
+	writeWSJSON(t, conn, wsRequestEnvelope{
+		Type:   "request",
+		ID:     "route-agent-get",
+		Action: "agent.get",
+		Payload: map[string]any{
+			"name": "myrig/worker",
+		},
+	})
+
+	var resp wsResponseEnvelope
+	readWSJSON(t, conn, &resp)
+	if resp.Type != "response" || resp.ID != "route-agent-get" {
+		t.Fatalf("response = %#v, want correlated response", resp)
+	}
+
+	var body agentResponse
+	if err := json.Unmarshal(resp.Result, &body); err != nil {
+		t.Fatalf("decode agent.get: %v", err)
+	}
+	if body.Name != "myrig/worker" {
+		t.Fatalf("name = %q, want myrig/worker", body.Name)
+	}
+	if body.Session == nil || body.Session.ID != info.ID || body.Session.Name != sessionName {
+		t.Fatalf("session = %+v, want id=%q name=%q", body.Session, info.ID, sessionName)
+	}
+}
 
 func TestRouteMatrixParity_GET_v0_agent_name_output_ViaWS(t *testing.T) {
 	conn, info := openRouteMatrixAgentOutputSocket(t)
@@ -210,6 +323,176 @@ func TestRouteMatrixParity_GET_v0_events_stream_ViaWS(t *testing.T) {
 	}
 }
 
+func TestRouteMatrixParity_GET_v0_sessions_ViaWS(t *testing.T) {
+	fs := newSessionFakeState(t)
+	createTestSession(t, fs.cityBeadStore, fs.sp, "Session A")
+	createTestSession(t, fs.cityBeadStore, fs.sp, "Session B")
+	_, _, conn := wsSetup(t, fs)
+
+	writeWSJSON(t, conn, wsRequestEnvelope{
+		Type:   "request",
+		ID:     "route-sessions-list",
+		Action: "sessions.list",
+	})
+
+	var resp wsResponseEnvelope
+	readWSJSON(t, conn, &resp)
+	if resp.Type != "response" || resp.ID != "route-sessions-list" {
+		t.Fatalf("response = %#v, want correlated response", resp)
+	}
+
+	var body struct {
+		Items []sessionResponse `json:"items"`
+		Total int               `json:"total"`
+	}
+	if err := json.Unmarshal(resp.Result, &body); err != nil {
+		t.Fatalf("decode sessions.list: %v", err)
+	}
+	if body.Total != 2 || len(body.Items) != 2 {
+		t.Fatalf("body = %+v, want total/items=2", body)
+	}
+}
+
+func TestRouteMatrixParity_GET_v0_session_id_ViaWS(t *testing.T) {
+	fs := newSessionFakeState(t)
+	info := createTestSession(t, fs.cityBeadStore, fs.sp, "Session A")
+	_, _, conn := wsSetup(t, fs)
+
+	writeWSJSON(t, conn, wsRequestEnvelope{
+		Type:   "request",
+		ID:     "route-session-get",
+		Action: "session.get",
+		Payload: map[string]any{
+			"id": info.ID,
+		},
+	})
+
+	var resp wsResponseEnvelope
+	readWSJSON(t, conn, &resp)
+	if resp.Type != "response" || resp.ID != "route-session-get" {
+		t.Fatalf("response = %#v, want correlated response", resp)
+	}
+
+	var body sessionResponse
+	if err := json.Unmarshal(resp.Result, &body); err != nil {
+		t.Fatalf("decode session.get: %v", err)
+	}
+	if body.ID != info.ID || body.Title != "Session A" {
+		t.Fatalf("body = %+v, want id=%q title=Session A", body, info.ID)
+	}
+}
+
+func TestRouteMatrixParity_GET_v0_session_id_pending_ViaWS(t *testing.T) {
+	fs := newSessionFakeState(t)
+	info := createTestSession(t, fs.cityBeadStore, fs.sp, "Interactive")
+	fs.sp.SetPendingInteraction(info.SessionName, &runtime.PendingInteraction{
+		RequestID: "req-1",
+		Kind:      "approval",
+		Prompt:    "approve?",
+	})
+	_, _, conn := wsSetup(t, fs)
+
+	writeWSJSON(t, conn, wsRequestEnvelope{
+		Type:   "request",
+		ID:     "route-session-pending",
+		Action: "session.pending",
+		Payload: map[string]any{
+			"id": info.ID,
+		},
+	})
+
+	var resp wsResponseEnvelope
+	readWSJSON(t, conn, &resp)
+	if resp.Type != "response" || resp.ID != "route-session-pending" {
+		t.Fatalf("response = %#v, want correlated response", resp)
+	}
+
+	var body sessionPendingResponse
+	if err := json.Unmarshal(resp.Result, &body); err != nil {
+		t.Fatalf("decode session.pending: %v", err)
+	}
+	if !body.Supported || body.Pending == nil || body.Pending.RequestID != "req-1" {
+		t.Fatalf("body = %+v, want supported pending req-1", body)
+	}
+}
+
+func TestRouteMatrixParity_POST_v0_session_id_messages_ViaWS(t *testing.T) {
+	fs := newSessionFakeState(t)
+	info := createTestSession(t, fs.cityBeadStore, fs.sp, "Resume Me")
+	mgr := session.NewManager(fs.cityBeadStore, fs.sp)
+	if err := mgr.Suspend(info.ID); err != nil {
+		t.Fatalf("Suspend: %v", err)
+	}
+	_, _, conn := wsSetup(t, fs)
+
+	writeWSJSON(t, conn, wsRequestEnvelope{
+		Type:   "request",
+		ID:     "route-session-messages",
+		Action: "session.messages",
+		Payload: map[string]any{
+			"id":      info.ID,
+			"message": "hello",
+		},
+	})
+
+	var resp wsResponseEnvelope
+	readWSJSON(t, conn, &resp)
+	if resp.Type != "response" || resp.ID != "route-session-messages" {
+		t.Fatalf("response = %#v, want correlated response", resp)
+	}
+
+	var body map[string]string
+	if err := json.Unmarshal(resp.Result, &body); err != nil {
+		t.Fatalf("decode session.messages: %v", err)
+	}
+	if body["status"] != "accepted" || body["id"] != info.ID {
+		t.Fatalf("body = %+v, want accepted id=%q", body, info.ID)
+	}
+	if !fs.sp.IsRunning(info.SessionName) {
+		t.Fatalf("session %q should be running after session.messages", info.SessionName)
+	}
+	found := false
+	for _, call := range fs.sp.Calls {
+		if call.Method == "Nudge" && call.Name == info.SessionName && call.Message == "hello" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("calls = %#v, want provider-default nudge hello", fs.sp.Calls)
+	}
+}
+
+func TestRouteMatrixParity_POST_v0_session_id_respond_ViaWS(t *testing.T) {
+	fs := newSessionFakeState(t)
+	info := createTestSession(t, fs.cityBeadStore, fs.sp, "Interactive")
+	fs.sp.SetPendingInteraction(info.SessionName, &runtime.PendingInteraction{
+		RequestID: "req-1",
+		Kind:      "approval",
+		Prompt:    "approve?",
+	})
+	_, _, conn := wsSetup(t, fs)
+
+	writeWSJSON(t, conn, wsRequestEnvelope{
+		Type:   "request",
+		ID:     "route-session-respond",
+		Action: "session.respond",
+		Payload: map[string]any{
+			"id":     info.ID,
+			"action": "approve",
+		},
+	})
+
+	var resp wsResponseEnvelope
+	readWSJSON(t, conn, &resp)
+	if resp.Type != "response" || resp.ID != "route-session-respond" {
+		t.Fatalf("response = %#v, want correlated response", resp)
+	}
+	if got := fs.sp.Responses[info.SessionName]; len(got) != 1 || got[0].Action != "approve" {
+		t.Fatalf("responses = %#v, want single approve", got)
+	}
+}
+
 func TestRouteMatrixParity_GET_v0_beads_index_wait_ViaWSWatch(t *testing.T) {
 	state := newFakeState(t)
 	srv := New(state)
@@ -291,6 +574,88 @@ func TestRouteMatrixParity_GET_v0_packs_ViaWS(t *testing.T) {
 	}
 	if len(body.Packs) != 1 || body.Packs[0].Name != "gastown" {
 		t.Fatalf("packs = %+v, want gastown pack", body.Packs)
+	}
+}
+
+func TestRouteMatrixParity_GET_v0_services_ViaWS(t *testing.T) {
+	state := newFakeState(t)
+	state.services = &fakeServiceRegistry{
+		items: []workspacesvc.Status{{
+			ServiceName:      "review-intake",
+			Kind:             "workflow",
+			WorkflowContract: "pack.gc/review-intake.v1",
+			MountPath:        "/svc/review-intake",
+			PublishMode:      "private",
+			StateRoot:        ".gc/services/review-intake",
+			State:            "ready",
+			LocalState:       "ready",
+			PublicationState: "private",
+		}},
+	}
+	_, _, conn := wsSetup(t, state)
+
+	writeWSJSON(t, conn, wsRequestEnvelope{
+		Type:   "request",
+		ID:     "route-services-list",
+		Action: "services.list",
+	})
+
+	var resp wsResponseEnvelope
+	readWSJSON(t, conn, &resp)
+	if resp.Type != "response" || resp.ID != "route-services-list" {
+		t.Fatalf("response = %#v, want correlated response", resp)
+	}
+
+	var body struct {
+		Items []workspacesvc.Status `json:"items"`
+		Total int                   `json:"total"`
+	}
+	if err := json.Unmarshal(resp.Result, &body); err != nil {
+		t.Fatalf("decode services.list: %v", err)
+	}
+	if body.Total != 1 || len(body.Items) != 1 || body.Items[0].ServiceName != "review-intake" {
+		t.Fatalf("body = %+v, want single review-intake service", body)
+	}
+}
+
+func TestRouteMatrixParity_GET_v0_service_name_ViaWS(t *testing.T) {
+	state := newFakeState(t)
+	state.services = &fakeServiceRegistry{
+		items: []workspacesvc.Status{{
+			ServiceName:      "review-intake",
+			Kind:             "workflow",
+			WorkflowContract: "pack.gc/review-intake.v1",
+			MountPath:        "/svc/review-intake",
+			PublishMode:      "private",
+			StateRoot:        ".gc/services/review-intake",
+			State:            "ready",
+			LocalState:       "ready",
+			PublicationState: "private",
+		}},
+	}
+	_, _, conn := wsSetup(t, state)
+
+	writeWSJSON(t, conn, wsRequestEnvelope{
+		Type:   "request",
+		ID:     "route-service-get",
+		Action: "service.get",
+		Payload: map[string]any{
+			"name": "review-intake",
+		},
+	})
+
+	var resp wsResponseEnvelope
+	readWSJSON(t, conn, &resp)
+	if resp.Type != "response" || resp.ID != "route-service-get" {
+		t.Fatalf("response = %#v, want correlated response", resp)
+	}
+
+	var body workspacesvc.Status
+	if err := json.Unmarshal(resp.Result, &body); err != nil {
+		t.Fatalf("decode service.get: %v", err)
+	}
+	if body.ServiceName != "review-intake" || body.Kind != "workflow" {
+		t.Fatalf("body = %+v, want review-intake workflow service", body)
 	}
 }
 
