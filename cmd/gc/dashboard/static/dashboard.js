@@ -165,7 +165,15 @@ import { createDashboardTransport } from './dashboard_transport.js';
 
     function clearError() {
         var banner = document.getElementById('dashboard-error-banner');
+        var titleEl = document.getElementById('dashboard-error-title');
+        var messageEl = document.getElementById('dashboard-error-message');
         if (!banner) return;
+        if (titleEl) {
+            titleEl.textContent = 'Dashboard degraded';
+        }
+        if (messageEl) {
+            messageEl.textContent = '';
+        }
         banner.hidden = true;
     }
 

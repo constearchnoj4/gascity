@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -173,5 +174,19 @@ func TestNewDashboardMuxDoesNotProxyAPIPaths(t *testing.T) {
 		if rec.Code != http.StatusNotFound {
 			t.Fatalf("%s status = %d, want 404", path, rec.Code)
 		}
+	}
+}
+
+func TestDashboardCSSHidesHiddenErrorBanner(t *testing.T) {
+	data, err := os.ReadFile("static/dashboard.css")
+	if err != nil {
+		t.Fatalf("ReadFile(static/dashboard.css): %v", err)
+	}
+	css := string(data)
+	if !strings.Contains(css, ".dashboard-error-banner[hidden]") {
+		t.Fatal("dashboard.css missing hidden selector for error banner")
+	}
+	if !strings.Contains(css, "display: none !important;") {
+		t.Fatal("dashboard.css missing explicit hidden display override for error banner")
 	}
 }

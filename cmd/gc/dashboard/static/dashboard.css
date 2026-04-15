@@ -94,6 +94,10 @@
             color: var(--text-primary);
         }
 
+        .dashboard-error-banner[hidden] {
+            display: none !important;
+        }
+
         .dashboard-error-copy {
             display: flex;
             flex-direction: column;
