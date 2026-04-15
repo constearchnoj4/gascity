@@ -104,3 +104,54 @@ func TestOpenAPISpecContainsOnlyHTTPSurvivorPaths(t *testing.T) {
 		t.Fatalf("openapi paths = %v, want %v", got, want)
 	}
 }
+
+func TestAsyncAPISpecContainsExpectedProtocolChannels(t *testing.T) {
+	state := newFakeState(t)
+	srv := New(state)
+	ts := httptest.NewServer(srv.handler())
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/v0/asyncapi.yaml")
+	if err != nil {
+		t.Fatalf("GET /v0/asyncapi.yaml: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+
+	var doc struct {
+		Channels map[string]any `yaml:"channels"`
+	}
+	if err := yaml.Unmarshal(body, &doc); err != nil {
+		t.Fatalf("unmarshal asyncapi yaml: %v", err)
+	}
+
+	var gotProtocol []string
+	for path := range doc.Channels {
+		if strings.HasPrefix(path, "protocol/") {
+			gotProtocol = append(gotProtocol, path)
+		}
+	}
+	sort.Strings(gotProtocol)
+
+	wantProtocol := []string{
+		"protocol/error",
+		"protocol/event",
+		"protocol/hello",
+		"protocol/subscription-start",
+		"protocol/subscription-stop",
+	}
+	if strings.Join(gotProtocol, "\n") != strings.Join(wantProtocol, "\n") {
+		t.Fatalf("asyncapi protocol channels = %v, want %v", gotProtocol, wantProtocol)
+	}
+
+	if _, ok := doc.Channels["actions/cities.list/request"]; !ok {
+		t.Fatal("asyncapi missing supervisor action channel actions/cities.list/request")
+	}
+	if _, ok := doc.Channels["actions/health.get/request"]; ok {
+		t.Fatal("asyncapi advertised HTTP-only action channel actions/health.get/request")
+	}
+}
