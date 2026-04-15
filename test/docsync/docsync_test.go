@@ -16,6 +16,8 @@ import (
 	"strings"
 	"testing"
 
+	gcapi "github.com/gastownhall/gascity/internal/api"
+	"github.com/gastownhall/gascity/internal/api/specgen"
 	"github.com/gastownhall/gascity/internal/docgen"
 )
 
@@ -388,6 +390,7 @@ func TestSchemaFreshness(t *testing.T) {
 		name     string
 		generate func() ([]byte, error)
 		path     string
+		command  string
 	}{
 		{
 			name: "city-schema.json",
@@ -402,7 +405,8 @@ func TestSchemaFreshness(t *testing.T) {
 				}
 				return append(data, '\n'), nil
 			},
-			path: filepath.Join(root, "docs", "schema", "city-schema.json"),
+			path:    filepath.Join(root, "docs", "schema", "city-schema.json"),
+			command: "go run ./cmd/genschema",
 		},
 		{
 			name: "config.md",
@@ -417,7 +421,24 @@ func TestSchemaFreshness(t *testing.T) {
 				}
 				return buf.Bytes(), nil
 			},
-			path: filepath.Join(root, "docs", "reference", "config.md"),
+			path:    filepath.Join(root, "docs", "reference", "config.md"),
+			command: "go run ./cmd/genschema",
+		},
+		{
+			name: "asyncapi.yaml",
+			generate: func() ([]byte, error) {
+				return specgen.GenerateAsyncAPI(gcapi.ActionTableRegistry(), gcapi.EnvelopeTypes())
+			},
+			path:    filepath.Join(root, "contracts", "supervisor-ws", "asyncapi.yaml"),
+			command: "go run ./cmd/specgen",
+		},
+		{
+			name: "openapi.yaml",
+			generate: func() ([]byte, error) {
+				return specgen.GenerateOpenAPI()
+			},
+			path:    filepath.Join(root, "contracts", "http", "openapi.yaml"),
+			command: "go run ./cmd/specgen",
 		},
 	}
 
@@ -430,11 +451,11 @@ func TestSchemaFreshness(t *testing.T) {
 
 			committed, err := os.ReadFile(tt.path)
 			if err != nil {
-				t.Fatalf("reading %s: %v\nRun: go run ./cmd/genschema", tt.path, err)
+				t.Fatalf("reading %s: %v\nRun: %s", tt.path, err, tt.command)
 			}
 
 			if !bytes.Equal(generated, committed) {
-				t.Errorf("%s is stale. Run: go run ./cmd/genschema", tt.name)
+				t.Errorf("%s is stale. Run: %s", tt.name, tt.command)
 			}
 		})
 	}

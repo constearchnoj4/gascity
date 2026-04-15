@@ -11,6 +11,7 @@ import (
 	"github.com/gastownhall/gascity/internal/agent"
 	"github.com/gastownhall/gascity/internal/beads"
 	"github.com/gastownhall/gascity/internal/config"
+	"github.com/gastownhall/gascity/internal/runtime"
 	"github.com/gastownhall/gascity/internal/sessionlog"
 	workdirutil "github.com/gastownhall/gascity/internal/workdir"
 )
@@ -46,6 +47,7 @@ type agentResponse struct {
 }
 
 type sessionInfo struct {
+	ID           string     `json:"id,omitempty"`
 	Name         string     `json:"name"`
 	LastActivity *time.Time `json:"last_activity,omitempty"`
 	Attached     bool       `json:"attached"`
@@ -126,14 +128,9 @@ func (s *Server) buildExpandedAgentResponse(agentCfg config.Agent, ea expandedAg
 	}
 
 	var lastActivity *time.Time
-	if running {
-		si := &sessionInfo{Name: sessionName}
-		if t, err := sp.GetLastActivity(sessionName); err == nil && !t.IsZero() {
-			si.LastActivity = &t
-			lastActivity = &t
-		}
-		si.Attached = sp.IsAttached(sessionName)
-		resp.Session = si
+	resp.Session = s.resolveAgentSessionInfo(ea.qualifiedName, sessionName, running, sp)
+	if resp.Session != nil {
+		lastActivity = resp.Session.LastActivity
 	}
 
 	resp.ActiveBead = s.findActiveBead(ea.qualifiedName, ea.rig)
@@ -151,6 +148,30 @@ func (s *Server) buildExpandedAgentResponse(agentCfg config.Agent, ea expandedAg
 	}
 
 	return resp, true
+}
+
+func (s *Server) resolveAgentSessionInfo(agentName, sessionName string, running bool, sp runtime.Provider) *sessionInfo {
+	var info *sessionInfo
+
+	if store := s.state.CityBeadStore(); store != nil {
+		if id, err := s.resolveSessionIDAllowClosedWithConfig(store, agentName); err == nil {
+			info = &sessionInfo{ID: id}
+		}
+	}
+
+	if !running {
+		return info
+	}
+
+	if info == nil {
+		info = &sessionInfo{}
+	}
+	info.Name = sessionName
+	if t, err := sp.GetLastActivity(sessionName); err == nil && !t.IsZero() {
+		info.LastActivity = &t
+	}
+	info.Attached = sp.IsAttached(sessionName)
+	return info
 }
 
 func (s *Server) applyAgentAction(name, action string) error {

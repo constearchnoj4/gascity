@@ -93,9 +93,18 @@ func TestServerWebSocketHello(t *testing.T) {
 	if wsCapabilitiesContain(hello.Capabilities, "cities.list") {
 		t.Fatal("city hello advertised supervisor-only action cities.list")
 	}
+	if wsCapabilitiesContain(hello.Capabilities, "health.get") {
+		t.Fatal("city hello advertised HTTP-only action health.get")
+	}
+	if !wsCapabilitiesContain(hello.Capabilities, "subscription.start") {
+		t.Fatal("city hello missing protocol action subscription.start")
+	}
+	if !wsCapabilitiesContain(hello.Capabilities, "subscription.stop") {
+		t.Fatal("city hello missing protocol action subscription.stop")
+	}
 }
 
-func TestServerWebSocketHealthGet(t *testing.T) {
+func TestServerWebSocketRejectsHealthGet(t *testing.T) {
 	state := newFakeState(t)
 	srv := New(state)
 	ts := httptest.NewServer(srv.handler())
@@ -111,23 +120,16 @@ func TestServerWebSocketHealthGet(t *testing.T) {
 		Action: "health.get",
 	})
 
-	var resp wsResponseEnvelope
+	var resp wsErrorEnvelope
 	readWSJSON(t, conn, &resp)
-	if resp.Type != "response" {
-		t.Fatalf("response type = %q, want response", resp.Type)
+	if resp.Type != "error" {
+		t.Fatalf("response type = %q, want error", resp.Type)
 	}
 	if resp.ID != "req-1" {
 		t.Fatalf("response id = %q, want req-1", resp.ID)
 	}
-	var body map[string]interface{}
-	if err := json.Unmarshal(resp.Result, &body); err != nil {
-		t.Fatalf("unmarshal result: %v", err)
-	}
-	if body["status"] != "ok" {
-		t.Fatalf("status = %#v, want ok", body["status"])
-	}
-	if body["city"] != "test-city" {
-		t.Fatalf("city = %#v, want test-city", body["city"])
+	if resp.Code != "not_found" {
+		t.Fatalf("response code = %q, want not_found", resp.Code)
 	}
 }
 
@@ -368,6 +370,15 @@ func TestSupervisorWebSocketHelloAndCitiesList(t *testing.T) {
 	if !wsCapabilitiesContain(hello.Capabilities, "cities.list") {
 		t.Fatalf("supervisor hello capabilities = %v, want cities.list", hello.Capabilities)
 	}
+	if wsCapabilitiesContain(hello.Capabilities, "health.get") {
+		t.Fatalf("supervisor hello capabilities = %v, should not advertise health.get", hello.Capabilities)
+	}
+	if !wsCapabilitiesContain(hello.Capabilities, "subscription.start") {
+		t.Fatalf("supervisor hello capabilities = %v, want subscription.start", hello.Capabilities)
+	}
+	if !wsCapabilitiesContain(hello.Capabilities, "subscription.stop") {
+		t.Fatalf("supervisor hello capabilities = %v, want subscription.stop", hello.Capabilities)
+	}
 
 	writeWSJSON(t, conn, wsRequestEnvelope{
 		Type:   "request",
@@ -508,7 +519,7 @@ func TestServerWebSocketRejectsNonRequestMessageType(t *testing.T) {
 	writeWSJSON(t, conn, map[string]any{
 		"type":   "event",
 		"id":     "req-wrong-type",
-		"action": "health.get",
+		"action": "status.get",
 	})
 
 	var resp wsErrorEnvelope
@@ -1229,8 +1240,8 @@ func TestServerWebSocketSessionTranscript(t *testing.T) {
 		ID:     "req-session-transcript",
 		Action: "session.transcript",
 		Payload: map[string]any{
-			"id":   info.ID,
-			"tail": 1,
+			"id":    info.ID,
+			"turns": 1,
 		},
 	})
 
@@ -1249,6 +1260,58 @@ func TestServerWebSocketSessionTranscript(t *testing.T) {
 	}
 	if len(body.Turns) == 0 || body.Turns[len(body.Turns)-1].Text != "world" {
 		t.Fatalf("turns = %#v, want websocket transcript tail ending in world", body.Turns)
+	}
+}
+
+func TestServerWebSocketSessionTranscriptJSONLUsesRawTranscript(t *testing.T) {
+	fs := newSessionFakeState(t)
+	info := createTestSession(t, fs.cityBeadStore, fs.sp, "Transcript")
+	srv := New(fs)
+	searchBase := t.TempDir()
+	srv.sessionLogSearchPaths = []string{searchBase}
+	writeNamedSessionJSONL(t, searchBase, info.WorkDir, info.SessionKey+".jsonl",
+		`{"uuid":"1","parentUuid":"","type":"user","message":"{\"role\":\"user\",\"content\":\"hello\"}","timestamp":"2025-01-01T00:00:00Z"}`,
+		`{"uuid":"2","parentUuid":"1","type":"assistant","message":"{\"role\":\"assistant\",\"content\":\"world\"}","timestamp":"2025-01-01T00:00:01Z"}`,
+	)
+	if err := session.NewManager(fs.cityBeadStore, fs.sp).Close(info.ID); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	ts := httptest.NewServer(srv.handler())
+	defer ts.Close()
+
+	conn := dialWebSocket(t, ts.URL+"/v0/ws")
+	defer conn.Close()
+	drainWSHello(t, conn)
+
+	writeWSJSON(t, conn, wsRequestEnvelope{
+		Type:   "request",
+		ID:     "req-session-transcript-jsonl",
+		Action: "session.transcript",
+		Payload: map[string]any{
+			"id":     info.ID,
+			"format": "jsonl",
+			"turns":  1,
+		},
+	})
+
+	var resp wsResponseEnvelope
+	readWSJSON(t, conn, &resp)
+	if resp.Type != "response" || resp.ID != "req-session-transcript-jsonl" {
+		t.Fatalf("response = %#v, want correlated response", resp)
+	}
+
+	var body sessionRawTranscriptResponse
+	if err := json.Unmarshal(resp.Result, &body); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	if body.Format != "raw" {
+		t.Fatalf("format = %q, want raw jsonl alias", body.Format)
+	}
+	if len(body.Messages) != 1 {
+		t.Fatalf("messages = %d, want 1 tail message", len(body.Messages))
+	}
+	if !strings.Contains(string(body.Messages[0]), `\"world\"`) {
+		t.Fatalf("messages[0] = %s, want assistant world payload", body.Messages[0])
 	}
 }
 
@@ -1461,6 +1524,123 @@ func TestServerWebSocketSessionStreamClosedSessionSnapshot(t *testing.T) {
 	}
 	if !strings.Contains(string(activityEvt.Payload), `"idle"`) {
 		t.Fatalf("activity payload = %s, want idle", activityEvt.Payload)
+	}
+}
+
+func TestServerWebSocketSessionStreamClosedSessionSnapshotHonorsTurns(t *testing.T) {
+	fs := newSessionFakeState(t)
+	searchBase := t.TempDir()
+	srv := New(fs)
+	srv.sessionLogSearchPaths = []string{searchBase}
+
+	mgr := session.NewManager(fs.cityBeadStore, fs.sp)
+	resume := session.ProviderResume{
+		ResumeFlag:    "--resume",
+		ResumeStyle:   "flag",
+		SessionIDFlag: "--session-id",
+	}
+	workDir := t.TempDir()
+	info, err := mgr.Create(context.Background(), "myrig/worker", "Chat", "claude", workDir, "claude", nil, resume, runtime.Config{})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	writeNamedSessionJSONL(t, searchBase, workDir, info.SessionKey+".jsonl",
+		`{"uuid":"1","parentUuid":"","type":"user","message":"{\"role\":\"user\",\"content\":\"hello\"}","timestamp":"2025-01-01T00:00:00Z"}`,
+		`{"uuid":"2","parentUuid":"1","type":"assistant","message":"{\"role\":\"assistant\",\"content\":\"world\"}","timestamp":"2025-01-01T00:00:01Z"}`,
+	)
+	if err := mgr.Close(info.ID); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	ts := httptest.NewServer(srv.handler())
+	defer ts.Close()
+
+	conn := dialWebSocket(t, ts.URL+"/v0/ws")
+	defer conn.Close()
+	drainWSHello(t, conn)
+
+	writeWSJSON(t, conn, wsRequestEnvelope{
+		Type:   "request",
+		ID:     "sub-session-tail",
+		Action: "subscription.start",
+		Payload: map[string]any{
+			"kind":   "session.stream",
+			"target": info.ID,
+			"turns":  1,
+		},
+	})
+
+	var resp wsResponseEnvelope
+	readWSJSON(t, conn, &resp)
+	if resp.Type != "response" || resp.ID != "sub-session-tail" {
+		t.Fatalf("subscription response = %#v, want correlated response", resp)
+	}
+
+	var turnEvt wsEventEnvelope
+	readWSJSON(t, conn, &turnEvt)
+	if turnEvt.Type != "event" || turnEvt.EventType != "turn" {
+		t.Fatalf("turn event = %#v, want turn event", turnEvt)
+	}
+	if strings.Contains(string(turnEvt.Payload), `"hello"`) {
+		t.Fatalf("turn payload = %s, want tail without older hello turn", turnEvt.Payload)
+	}
+	if !strings.Contains(string(turnEvt.Payload), `"world"`) {
+		t.Fatalf("turn payload = %s, want last assistant turn", turnEvt.Payload)
+	}
+}
+
+func TestServerWebSocketSessionStreamRejectsInvalidFormat(t *testing.T) {
+	fs := newSessionFakeState(t)
+	searchBase := t.TempDir()
+	srv := New(fs)
+	srv.sessionLogSearchPaths = []string{searchBase}
+
+	mgr := session.NewManager(fs.cityBeadStore, fs.sp)
+	resume := session.ProviderResume{
+		ResumeFlag:    "--resume",
+		ResumeStyle:   "flag",
+		SessionIDFlag: "--session-id",
+	}
+	workDir := t.TempDir()
+	info, err := mgr.Create(context.Background(), "myrig/worker", "Chat", "claude", workDir, "claude", nil, resume, runtime.Config{})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	writeNamedSessionJSONL(t, searchBase, workDir, info.SessionKey+".jsonl",
+		`{"uuid":"1","parentUuid":"","type":"user","message":"{\"role\":\"user\",\"content\":\"hello\"}","timestamp":"2025-01-01T00:00:00Z"}`,
+	)
+	if err := mgr.Close(info.ID); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	ts := httptest.NewServer(srv.handler())
+	defer ts.Close()
+
+	conn := dialWebSocket(t, ts.URL+"/v0/ws")
+	defer conn.Close()
+	drainWSHello(t, conn)
+
+	writeWSJSON(t, conn, wsRequestEnvelope{
+		Type:   "request",
+		ID:     "sub-session-invalid-format",
+		Action: "subscription.start",
+		Payload: map[string]any{
+			"kind":   "session.stream",
+			"target": info.ID,
+			"format": "bogus",
+		},
+	})
+
+	var errResp wsErrorEnvelope
+	readWSJSON(t, conn, &errResp)
+	if errResp.Type != "error" || errResp.ID != "sub-session-invalid-format" {
+		t.Fatalf("error response = %#v, want correlated error", errResp)
+	}
+	if errResp.Code != "invalid" {
+		t.Fatalf("code = %q, want invalid", errResp.Code)
+	}
+	if !strings.Contains(errResp.Message, "format") {
+		t.Fatalf("message = %q, want format validation error", errResp.Message)
 	}
 }
 
@@ -1769,7 +1949,7 @@ func TestServerWebSocketOversizeMessageRejected(t *testing.T) {
 	err := conn.WriteJSON(map[string]string{
 		"type":    "request",
 		"id":      "big-1",
-		"action":  "health.get",
+		"action":  "status.get",
 		"payload": bigPayload,
 	})
 	if err != nil {
@@ -1862,7 +2042,7 @@ func TestServerWebSocketConcurrentDispatch(t *testing.T) {
 		writeWSJSON(t, conn, wsRequestEnvelope{
 			Type:   "request",
 			ID:     "concurrent-" + strings.Repeat("0", i) + "1",
-			Action: "health.get",
+			Action: "status.get",
 		})
 	}
 
@@ -1997,7 +2177,7 @@ func TestWSConcurrentDispatch(t *testing.T) {
 
 	actions := []string{
 		"status.get",
-		"health.get",
+		"city.get",
 		"agents.list",
 		"beads.list",
 		"events.list",

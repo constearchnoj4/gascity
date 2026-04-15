@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/gastownhall/gascity/internal/api"
 	"github.com/gastownhall/gascity/internal/config"
 	"github.com/gastownhall/gascity/internal/fsys"
 	"github.com/spf13/cobra"
@@ -324,16 +323,13 @@ func cmdAgentSuspend(args []string, stdout, stderr io.Writer) int {
 	}
 	if c := apiClient(cityPath); c != nil {
 		qname := resolveAgentForAPI(cityPath, args[0])
-		err := c.SuspendAgent(qname)
-		if err == nil {
+		if err := c.SuspendAgent(qname); err == nil {
 			fmt.Fprintf(stdout, "Suspended agent '%s'\n", args[0]) //nolint:errcheck // best-effort stdout
 			return 0
-		}
-		if !api.ShouldFallback(err) {
+		} else {
 			fmt.Fprintf(stderr, "gc agent suspend: %v\n", err) //nolint:errcheck // best-effort stderr
 			return 1
 		}
-		// Connection error — fall through to direct mutation.
 	}
 	return doAgentSuspend(fsys.OSFS{}, cityPath, args[0], stdout, stderr)
 }
@@ -424,16 +420,13 @@ func cmdAgentResume(args []string, stdout, stderr io.Writer) int {
 	}
 	if c := apiClient(cityPath); c != nil {
 		qname := resolveAgentForAPI(cityPath, args[0])
-		err := c.ResumeAgent(qname)
-		if err == nil {
+		if err := c.ResumeAgent(qname); err == nil {
 			fmt.Fprintf(stdout, "Resumed agent '%s'\n", args[0]) //nolint:errcheck // best-effort stdout
 			return 0
-		}
-		if !api.ShouldFallback(err) {
+		} else {
 			fmt.Fprintf(stderr, "gc agent resume: %v\n", err) //nolint:errcheck // best-effort stderr
 			return 1
 		}
-		// Connection error — fall through to direct mutation.
 	}
 	return doAgentResume(fsys.OSFS{}, cityPath, args[0], stdout, stderr)
 }

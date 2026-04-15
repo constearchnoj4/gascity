@@ -203,10 +203,14 @@ func init() {
 		Description:       "Get session transcript",
 		RequiresCityScope: true,
 	}, func(_ context.Context, s *Server, payload socketSessionTranscriptPayload) (any, error) {
+		format, err := normalizeSessionTranscriptFormat(payload.Format)
+		if err != nil {
+			return nil, err
+		}
 		return s.Sessions.Transcript(payload.ID, sessionTranscriptQuery{
 			Tail:   payload.Turns,
 			Before: payload.Before,
-			Raw:    payload.Format == "raw",
+			Raw:    format == "raw",
 		})
 	})
 

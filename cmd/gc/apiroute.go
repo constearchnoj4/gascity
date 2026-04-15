@@ -11,11 +11,10 @@ import (
 	"github.com/gastownhall/gascity/internal/fsys"
 )
 
-// apiClient returns an API client if a controller with a mutable API server
-// is running for the city at cityPath. Returns nil if no controller is running,
-// the API is not configured, or the API is bound to a non-localhost address
-// (which runs in read-only mode). CLI commands use this to route writes through
-// the API when available, falling back to direct file mutation.
+// apiClient returns an API client if a city controller or supervisor API is
+// available for the target city. When a controller is running with an API
+// port, CLI mutations must use the API and fail closed on transport or
+// read-only errors instead of silently mutating local files behind its back.
 func apiClient(cityPath string) *api.Client {
 	// Check if controller is alive.
 	if controllerAlive(cityPath) != 0 {
@@ -28,18 +27,19 @@ func apiClient(cityPath string) *api.Client {
 		if cfg.API.Port <= 0 {
 			return nil
 		}
-
-		// Non-localhost bind means API runs read-only — skip API routing
-		// (unless allow_mutations is set).
-		bind := cfg.API.BindOrDefault()
-		if bind != "127.0.0.1" && bind != "localhost" && bind != "::1" && !cfg.API.AllowMutations {
-			return nil
-		}
-
-		baseURL := fmt.Sprintf("http://%s", net.JoinHostPort(bind, strconv.Itoa(cfg.API.Port)))
-		return api.NewClient(baseURL)
+		return api.NewClient(apiBaseURL(cfg.API.BindOrDefault(), cfg.API.Port))
 	}
 	return supervisorCityAPIClient(cityPath)
+}
+
+func apiBaseURL(bind string, port int) string {
+	switch bind {
+	case "0.0.0.0":
+		bind = "127.0.0.1"
+	case "::", "[::]":
+		bind = "::1"
+	}
+	return fmt.Sprintf("http://%s", net.JoinHostPort(bind, strconv.Itoa(port)))
 }
 
 // resolveAgentForAPI resolves a bare agent name (e.g., "worker") to its

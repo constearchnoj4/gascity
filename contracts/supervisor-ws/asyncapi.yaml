@@ -569,18 +569,6 @@ channels:
       message:
         summary: List formulas
         description: formulas.list response payload
-  actions/health.get/request:
-    description: Health check
-  actions/health.get/response:
-    subscribe:
-      message:
-        payload:
-          additionalProperties: {}
-          type:
-          - "null"
-          - object
-        summary: Health check
-        description: health.get response payload
   actions/mail.archive/request:
     publish:
       message:

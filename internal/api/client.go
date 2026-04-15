@@ -41,18 +41,6 @@ type readOnlyError struct {
 
 func (e *readOnlyError) Error() string { return e.msg }
 
-// ShouldFallback reports whether err indicates the CLI should fall back to
-// direct file mutation. This is true for transport-level failures (connection
-// refused, timeout) and for read-only API rejections (server bound to
-// non-localhost, mutations disabled).
-func ShouldFallback(err error) bool {
-	if IsConnError(err) {
-		return true
-	}
-	var ro *readOnlyError
-	return errors.As(err, &ro)
-}
-
 // wsClientResult carries either a response or an error from the background
 // reader to the waiting request goroutine.
 type wsClientResult struct {
@@ -72,14 +60,28 @@ type Client struct {
 	wsConn      *websocket.Conn
 	wsFailCount int
 	wsBackoff   time.Time // don't attempt WS before this time
+	wsClosed    bool
 	nextReqID   uint64
 	// Concurrent WebSocket transport.
-	wsReaderDone  chan struct{}
-	pending       sync.Map // map[string]chan wsClientResult
+	wsReaderDone chan struct{}
+	pending      sync.Map // map[string]chan wsClientResult
 	// Subscriptions: routing event frames to callbacks.
-	subMu    sync.Mutex
-	subs     map[string]func(SubscriptionEvent)
-	eventBuf []SubscriptionEvent // buffered events for not-yet-registered subscriptions
+	subMu           sync.Mutex
+	subs            map[string]*clientSubscription // stable client ID -> subscription state
+	subServerIndex  map[string]string              // server subscription ID -> stable client ID
+	eventBuf        map[string][]SubscriptionEvent // buffered by server subscription ID
+	reconnectActive bool
+}
+
+type clientSubscription struct {
+	id         string
+	serverID   string
+	scope      *socketScope
+	payload    map[string]any
+	callback   func(SubscriptionEvent)
+	ctx        context.Context
+	lastIndex  uint64
+	lastCursor string
 }
 
 // SessionSubmitResponse mirrors POST /v0/session/{id}/submit.
@@ -98,6 +100,9 @@ func NewClient(baseURL string) *Client {
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
 		},
+		subs:           make(map[string]*clientSubscription),
+		subServerIndex: make(map[string]string),
+		eventBuf:       make(map[string][]SubscriptionEvent),
 	}
 }
 
@@ -215,7 +220,6 @@ func (c *Client) SubmitSession(id, message string, intent session.SubmitIntent) 
 	return resp, nil
 }
 
-
 // escapeName escapes each segment of a potentially qualified name (e.g.,
 // "myrig/worker") for use in URL paths. Slashes are preserved as path
 // separators; other URL metacharacters (#, ?, etc.) are percent-encoded.
@@ -237,7 +241,6 @@ func unescapeName(name string) string {
 	}
 	return strings.Join(parts, "/")
 }
-
 
 func (c *Client) doSocketJSON(action string, scope *socketScope, payload any, out any) (bool, error) {
 	resp, handled, err := c.doSocketRequest(action, c.effectiveSocketScope(scope), payload)
@@ -286,6 +289,7 @@ func (c *Client) Close() {
 	conn := c.wsConn
 	done := c.wsReaderDone
 	c.wsConn = nil
+	c.wsClosed = true
 	c.wsMu.Unlock()
 
 	if conn != nil {
@@ -337,73 +341,116 @@ func (c *Client) SubscribeSessionStream(ctx context.Context, target, format stri
 }
 
 func (c *Client) startSubscription(ctx context.Context, payload map[string]any, callback func(SubscriptionEvent)) (string, error) {
-	var resp struct {
-		SubscriptionID string `json:"subscription_id"`
-	}
-	used, err := c.doSocketJSON("subscription.start", nil, payload, &resp)
+	serverID, used, err := c.startSubscriptionOnSocket(c.effectiveSocketScope(nil), payload)
 	if err != nil {
 		return "", err
 	}
 	if !used {
 		return "", fmt.Errorf("websocket not available for subscriptions")
 	}
-	if resp.SubscriptionID == "" {
-		return "", fmt.Errorf("server returned empty subscription_id")
+	sub := &clientSubscription{
+		id:       serverID,
+		serverID: serverID,
+		scope:    cloneSocketScope(c.effectiveSocketScope(nil)),
+		payload:  cloneAnyMap(payload),
+		callback: callback,
+		ctx:      ctx,
 	}
+	buffered := c.registerSubscription(sub)
 
-	// Register the callback under subMu and drain any buffered events
-	// that arrived between the response and this registration.
-	c.subMu.Lock()
-	if c.subs == nil {
-		c.subs = make(map[string]func(SubscriptionEvent))
-	}
-	c.subs[resp.SubscriptionID] = callback
-	var kept []SubscriptionEvent
-	var buffered []SubscriptionEvent
-	for _, evt := range c.eventBuf {
-		if evt.SubscriptionID == resp.SubscriptionID {
-			buffered = append(buffered, evt)
-		} else {
-			kept = append(kept, evt)
-		}
-	}
-	c.eventBuf = kept
-	c.subMu.Unlock()
+	go func() {
+		<-ctx.Done()
+		_ = c.unsubscribeSubscription(sub.id, true)
+	}()
 
-	// Call callbacks OUTSIDE the lock to prevent deadlock if callback
-	// calls Unsubscribe or starts another subscription.
 	for _, evt := range buffered {
 		callback(evt)
 	}
 
-	// Auto-cleanup when caller's ctx is cancelled.
-	go func() {
-		<-ctx.Done()
-		c.subMu.Lock()
-		delete(c.subs, resp.SubscriptionID)
-		c.subMu.Unlock()
-		// Best-effort server-side cleanup.
-		_, _ = c.doSocketJSON("subscription.stop", nil, map[string]any{
-			"subscription_id": resp.SubscriptionID,
-		}, nil)
-	}()
-
-	return resp.SubscriptionID, nil
+	return sub.id, nil
 }
 
 // Unsubscribe stops a subscription by ID.
 func (c *Client) Unsubscribe(subscriptionID string) error {
+	return c.unsubscribeSubscription(subscriptionID, false)
+}
+
+func (c *Client) unsubscribeSubscription(subscriptionID string, bestEffort bool) error {
+	sub, serverID := c.removeSubscription(subscriptionID)
+	if sub == nil {
+		if bestEffort {
+			return nil
+		}
+		return fmt.Errorf("subscription not found: %s", subscriptionID)
+	}
+	if serverID == "" {
+		return nil
+	}
+	_, err := c.stopSubscriptionOnSocket(serverID)
+	if bestEffort && IsConnError(err) {
+		return nil
+	}
+	return err
+}
+
+func (c *Client) registerSubscription(sub *clientSubscription) []SubscriptionEvent {
 	c.subMu.Lock()
+	defer c.subMu.Unlock()
+	c.subs[sub.id] = sub
+	if sub.serverID != "" {
+		c.subServerIndex[sub.serverID] = sub.id
+	}
+	buffered := c.takeBufferedEventsLocked(sub.serverID)
+	for i := range buffered {
+		buffered[i].SubscriptionID = sub.id
+		c.updateSubscriptionCursorLocked(sub, buffered[i])
+	}
+	return buffered
+}
+
+func (c *Client) removeSubscription(subscriptionID string) (*clientSubscription, string) {
+	c.subMu.Lock()
+	defer c.subMu.Unlock()
+	sub := c.subs[subscriptionID]
+	if sub == nil {
+		return nil, ""
+	}
 	delete(c.subs, subscriptionID)
-	c.subMu.Unlock()
-	_, err := c.doSocketJSON("subscription.stop", nil, map[string]any{
+	serverID := sub.serverID
+	if serverID != "" {
+		delete(c.subServerIndex, serverID)
+		delete(c.eventBuf, serverID)
+	}
+	sub.serverID = ""
+	return sub, serverID
+}
+
+func (c *Client) startSubscriptionOnSocket(scope *socketScope, payload map[string]any) (string, bool, error) {
+	var resp struct {
+		SubscriptionID string `json:"subscription_id"`
+	}
+	used, err := c.doSocketJSON("subscription.start", scope, payload, &resp)
+	if err != nil {
+		return "", used, err
+	}
+	if resp.SubscriptionID == "" {
+		return "", used, fmt.Errorf("server returned empty subscription_id")
+	}
+	return resp.SubscriptionID, used, nil
+}
+
+func (c *Client) stopSubscriptionOnSocket(subscriptionID string) (bool, error) {
+	return c.doSocketJSON("subscription.stop", nil, map[string]any{
 		"subscription_id": subscriptionID,
 	}, nil)
-	return err
 }
 
 func (c *Client) doSocketRequest(action string, scope *socketScope, payload any) (socketClientResponseEnvelope, bool, error) {
 	c.wsMu.Lock()
+	if c.wsClosed {
+		c.wsMu.Unlock()
+		return socketClientResponseEnvelope{}, true, &connError{err: fmt.Errorf("websocket client closed")}
+	}
 
 	// Backoff: if we've failed recently, return error (no HTTP fallback).
 	if !c.wsBackoff.IsZero() && time.Now().Before(c.wsBackoff) {
@@ -497,6 +544,7 @@ func (c *Client) wsReadLoop(conn *websocket.Conn) {
 				c.wsBackoff = time.Now().Add(wsBackoffDuration(c.wsFailCount))
 			}
 			c.wsMu.Unlock()
+			c.handleDisconnectedSubscriptions()
 			return
 		}
 
@@ -535,17 +583,7 @@ func (c *Client) wsReadLoop(conn *websocket.Conn) {
 				log.Printf("api: ws client: invalid event frame: %v", err)
 				continue
 			}
-			c.subMu.Lock()
-			if cb, ok := c.subs[evt.SubscriptionID]; ok {
-				c.subMu.Unlock()
-				cb(evt)
-			} else {
-				const maxEventBuf = 1000
-				if len(c.eventBuf) < maxEventBuf {
-					c.eventBuf = append(c.eventBuf, evt)
-				}
-				c.subMu.Unlock()
-			}
+			c.routeSubscriptionEvent(evt)
 		default:
 			// Ignore unknown message types (e.g., pings handled by gorilla).
 		}
@@ -571,6 +609,9 @@ func wsSocketErrorToGoError(resp socketErrorEnvelope) error {
 }
 
 func (c *Client) ensureWSConnLocked() error {
+	if c.wsClosed {
+		return fmt.Errorf("websocket client closed")
+	}
 	if c.wsConn != nil {
 		return nil
 	}
@@ -621,7 +662,6 @@ func websocketURLForBase(baseURL string) (string, error) {
 	return u.String(), nil
 }
 
-
 func (c *Client) urlForPath(path string) string {
 	if c.scopePrefix != "" && strings.HasPrefix(path, "/v0/") {
 		return c.baseURL + c.scopePrefix + strings.TrimPrefix(path, "/v0")
@@ -636,3 +676,269 @@ func (c *Client) effectiveSocketScope(scope *socketScope) *socketScope {
 	return c.socketScope
 }
 
+func (c *Client) routeSubscriptionEvent(evt SubscriptionEvent) {
+	cb, routed, shouldBuffer := c.routeSubscriptionEventLocked(evt)
+	if shouldBuffer || cb == nil {
+		return
+	}
+	cb(routed)
+}
+
+func (c *Client) routeSubscriptionEventLocked(evt SubscriptionEvent) (func(SubscriptionEvent), SubscriptionEvent, bool) {
+	c.subMu.Lock()
+	defer c.subMu.Unlock()
+
+	stableID, ok := c.subServerIndex[evt.SubscriptionID]
+	if !ok {
+		const maxEventBufPerSubscription = 128
+		buf := append(c.eventBuf[evt.SubscriptionID], evt)
+		if len(buf) > maxEventBufPerSubscription {
+			buf = buf[len(buf)-maxEventBufPerSubscription:]
+		}
+		c.eventBuf[evt.SubscriptionID] = buf
+		return nil, SubscriptionEvent{}, true
+	}
+
+	sub := c.subs[stableID]
+	if sub == nil {
+		delete(c.subServerIndex, evt.SubscriptionID)
+		return nil, SubscriptionEvent{}, true
+	}
+	c.updateSubscriptionCursorLocked(sub, evt)
+	evt.SubscriptionID = stableID
+	return sub.callback, evt, false
+}
+
+func (c *Client) updateSubscriptionCursorLocked(sub *clientSubscription, evt SubscriptionEvent) {
+	if evt.Index > 0 {
+		sub.lastIndex = evt.Index
+	}
+	if evt.Cursor != "" {
+		sub.lastCursor = evt.Cursor
+	}
+}
+
+func (c *Client) takeBufferedEventsLocked(serverID string) []SubscriptionEvent {
+	if serverID == "" {
+		return nil
+	}
+	buffered := append([]SubscriptionEvent(nil), c.eventBuf[serverID]...)
+	delete(c.eventBuf, serverID)
+	return buffered
+}
+
+func (c *Client) handleDisconnectedSubscriptions() {
+	c.subMu.Lock()
+	if len(c.subs) == 0 || c.wsClosed {
+		c.subServerIndex = make(map[string]string)
+		c.eventBuf = make(map[string][]SubscriptionEvent)
+		c.subMu.Unlock()
+		return
+	}
+	for _, sub := range c.subs {
+		sub.serverID = ""
+	}
+	c.subServerIndex = make(map[string]string)
+	c.eventBuf = make(map[string][]SubscriptionEvent)
+	if c.reconnectActive {
+		c.subMu.Unlock()
+		return
+	}
+	c.reconnectActive = true
+	c.subMu.Unlock()
+
+	go c.reconnectSubscriptionsLoop()
+}
+
+func (c *Client) reconnectSubscriptionsLoop() {
+	defer func() {
+		c.subMu.Lock()
+		c.reconnectActive = false
+		c.subMu.Unlock()
+	}()
+
+	for {
+		if c.isClosed() {
+			return
+		}
+		snapshot := c.subscriptionSnapshot()
+		if len(snapshot) == 0 {
+			return
+		}
+		if !c.waitForReconnectBackoff() {
+			return
+		}
+		if err := c.reconnectWS(); err != nil {
+			continue
+		}
+		if c.resubscribeAll(snapshot) {
+			return
+		}
+	}
+}
+
+func (c *Client) isClosed() bool {
+	c.wsMu.Lock()
+	defer c.wsMu.Unlock()
+	return c.wsClosed
+}
+
+func (c *Client) waitForReconnectBackoff() bool {
+	for {
+		c.wsMu.Lock()
+		if c.wsClosed {
+			c.wsMu.Unlock()
+			return false
+		}
+		wait := time.Until(c.wsBackoff)
+		c.wsMu.Unlock()
+		if wait <= 0 {
+			return true
+		}
+		timer := time.NewTimer(wait)
+		select {
+		case <-timer.C:
+		}
+	}
+}
+
+func (c *Client) reconnectWS() error {
+	c.wsMu.Lock()
+	defer c.wsMu.Unlock()
+
+	if c.wsClosed {
+		return fmt.Errorf("websocket client closed")
+	}
+	if c.wsConn != nil {
+		return nil
+	}
+	if err := c.ensureWSConnLocked(); err != nil {
+		c.wsFailCount++
+		c.wsBackoff = time.Now().Add(wsBackoffDuration(c.wsFailCount))
+		log.Printf("api: ws reconnect failed (attempt %d, backoff %s): %v", c.wsFailCount, wsBackoffDuration(c.wsFailCount), err)
+		return err
+	}
+	c.wsFailCount = 0
+	c.wsBackoff = time.Time{}
+	return nil
+}
+
+func (c *Client) resubscribeAll(snapshot []*clientSubscription) bool {
+	for _, sub := range snapshot {
+		if !c.subscriptionStillActive(sub.id, sub.ctx) {
+			continue
+		}
+		payload := c.resumePayload(sub)
+		serverID, _, err := c.startSubscriptionOnSocket(sub.scope, payload)
+		if err != nil {
+			if IsConnError(err) {
+				return false
+			}
+			log.Printf("api: ws resubscribe failed id=%s kind=%v: %v", sub.id, payload["kind"], err)
+			return false
+		}
+		buffered, current := c.remapSubscription(sub.id, serverID)
+		if !current {
+			_, _ = c.stopSubscriptionOnSocket(serverID)
+			continue
+		}
+		for _, evt := range buffered {
+			sub.callback(evt)
+		}
+	}
+	return true
+}
+
+func (c *Client) subscriptionSnapshot() []*clientSubscription {
+	c.subMu.Lock()
+	defer c.subMu.Unlock()
+	snapshot := make([]*clientSubscription, 0, len(c.subs))
+	for _, sub := range c.subs {
+		snapshot = append(snapshot, &clientSubscription{
+			id:         sub.id,
+			serverID:   sub.serverID,
+			scope:      cloneSocketScope(sub.scope),
+			payload:    cloneAnyMap(sub.payload),
+			callback:   sub.callback,
+			ctx:        sub.ctx,
+			lastIndex:  sub.lastIndex,
+			lastCursor: sub.lastCursor,
+		})
+	}
+	return snapshot
+}
+
+func (c *Client) subscriptionStillActive(subscriptionID string, ctx context.Context) bool {
+	if ctx != nil {
+		select {
+		case <-ctx.Done():
+			return false
+		default:
+		}
+	}
+	c.subMu.Lock()
+	defer c.subMu.Unlock()
+	_, ok := c.subs[subscriptionID]
+	return ok
+}
+
+func (c *Client) resumePayload(sub *clientSubscription) map[string]any {
+	payload := cloneAnyMap(sub.payload)
+	switch payload["kind"] {
+	case "events":
+		if sub.lastCursor != "" {
+			payload["after_cursor"] = sub.lastCursor
+			delete(payload, "after_seq")
+		} else if sub.lastIndex > 0 {
+			payload["after_seq"] = sub.lastIndex
+		}
+	}
+	return payload
+}
+
+func (c *Client) remapSubscription(subscriptionID, serverID string) ([]SubscriptionEvent, bool) {
+	c.subMu.Lock()
+	defer c.subMu.Unlock()
+
+	sub := c.subs[subscriptionID]
+	if sub == nil {
+		return nil, false
+	}
+	if sub.ctx != nil {
+		select {
+		case <-sub.ctx.Done():
+			return nil, false
+		default:
+		}
+	}
+	if sub.serverID != "" {
+		delete(c.subServerIndex, sub.serverID)
+	}
+	sub.serverID = serverID
+	c.subServerIndex[serverID] = subscriptionID
+	buffered := c.takeBufferedEventsLocked(serverID)
+	for i := range buffered {
+		buffered[i].SubscriptionID = subscriptionID
+		c.updateSubscriptionCursorLocked(sub, buffered[i])
+	}
+	return buffered, true
+}
+
+func cloneAnyMap(src map[string]any) map[string]any {
+	if src == nil {
+		return nil
+	}
+	dst := make(map[string]any, len(src))
+	for k, v := range src {
+		dst[k] = v
+	}
+	return dst
+}
+
+func cloneSocketScope(scope *socketScope) *socketScope {
+	if scope == nil {
+		return nil
+	}
+	clone := *scope
+	return &clone
+}

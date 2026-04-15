@@ -10,8 +10,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gastownhall/gascity/internal/beads"
 	"github.com/gastownhall/gascity/internal/config"
 	"github.com/gastownhall/gascity/internal/runtime"
+	"github.com/gastownhall/gascity/internal/session"
 	"github.com/gastownhall/gascity/internal/sessionlog"
 )
 
@@ -299,6 +301,59 @@ func TestAgentGet(t *testing.T) {
 	}
 	if body.Name != "myrig/worker" {
 		t.Errorf("Name = %q, want %q", body.Name, "myrig/worker")
+	}
+}
+
+func TestAgentGetIncludesCanonicalSessionID(t *testing.T) {
+	state := newSessionFakeState(t)
+	sessionName := "myrig--worker"
+	state.sp.Start(context.Background(), sessionName, runtime.Config{}) //nolint:errcheck
+
+	bead, err := state.cityBeadStore.Create(beads.Bead{
+		Type:   session.BeadType,
+		Labels: []string{session.LabelSession, "template:myrig/worker"},
+		Metadata: map[string]string{
+			"template":     "myrig/worker",
+			"session_name": sessionName,
+			"state":        "awake",
+		},
+	})
+	if err != nil {
+		t.Fatalf("create session bead: %v", err)
+	}
+
+	srv := New(state)
+	ts := httptest.NewServer(srv.handler())
+	defer ts.Close()
+
+	conn := dialWebSocket(t, ts.URL+"/v0/ws")
+	defer conn.Close()
+	drainWSHello(t, conn)
+
+	writeWSJSON(t, conn, wsRequestEnvelope{
+		Type:   "request",
+		ID:     "test-get-session-id",
+		Action: "agent.get",
+		Payload: map[string]interface{}{
+			"name": "myrig/worker",
+		},
+	})
+
+	var resp wsResponseEnvelope
+	readWSJSON(t, conn, &resp)
+
+	var body agentResponse
+	if err := json.Unmarshal(resp.Result, &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Session == nil {
+		t.Fatal("Session = nil, want canonical session details")
+	}
+	if body.Session.ID != bead.ID {
+		t.Fatalf("Session.ID = %q, want %q", body.Session.ID, bead.ID)
+	}
+	if body.Session.Name != sessionName {
+		t.Fatalf("Session.Name = %q, want %q", body.Session.Name, sessionName)
 	}
 }
 

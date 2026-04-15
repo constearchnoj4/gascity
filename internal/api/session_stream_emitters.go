@@ -15,6 +15,13 @@ import (
 // streamKeepalive is the interval for stream keepalive ticks.
 const streamKeepalive = 15 * time.Second
 
+func tailSlice[T any](items []T, n int) []T {
+	if n <= 0 || len(items) <= n {
+		return items
+	}
+	return items[len(items)-n:]
+}
+
 type sessionStreamEmitter struct {
 	event     func(eventType string, id uint64, data []byte) error
 	keepalive func() error
@@ -49,7 +56,7 @@ func newSocketSessionStreamEmitter(sess *socketSession, subscriptionID string) s
 	}
 }
 
-func (s *Server) emitClosedSessionSnapshotWithEmitter(emitter sessionStreamEmitter, info session.Info, logPath string) {
+func (s *Server) emitClosedSessionSnapshotWithEmitter(emitter sessionStreamEmitter, info session.Info, logPath string, tail int) {
 	if logPath == "" {
 		return
 	}
@@ -69,6 +76,7 @@ func (s *Server) emitClosedSessionSnapshotWithEmitter(emitter sessionStreamEmitt
 	if len(turns) == 0 {
 		return
 	}
+	turns = tailSlice(turns, tail)
 
 	data, err := json.Marshal(sessionTranscriptResponse{
 		ID:       info.ID,
@@ -86,7 +94,7 @@ func (s *Server) emitClosedSessionSnapshotWithEmitter(emitter sessionStreamEmitt
 	_ = emitter.emit("activity", 2, actData)
 }
 
-func (s *Server) emitClosedSessionSnapshotRawWithEmitter(emitter sessionStreamEmitter, info session.Info, logPath string) {
+func (s *Server) emitClosedSessionSnapshotRawWithEmitter(emitter sessionStreamEmitter, info session.Info, logPath string, tail int) {
 	if logPath == "" {
 		return
 	}
@@ -105,6 +113,7 @@ func (s *Server) emitClosedSessionSnapshotRawWithEmitter(emitter sessionStreamEm
 	if len(rawMessages) == 0 {
 		return
 	}
+	rawMessages = tailSlice(rawMessages, tail)
 
 	data, err := json.Marshal(sessionRawTranscriptResponse{
 		ID:       info.ID,
@@ -122,7 +131,7 @@ func (s *Server) emitClosedSessionSnapshotRawWithEmitter(emitter sessionStreamEm
 	_ = emitter.emit("activity", 2, actData)
 }
 
-func (s *Server) streamSessionTranscriptLogRawWithEmitter(ctx context.Context, emitter sessionStreamEmitter, info session.Info, logPath string) {
+func (s *Server) streamSessionTranscriptLogRawWithEmitter(ctx context.Context, emitter sessionStreamEmitter, info session.Info, logPath string, initialTail int) {
 	lw := newLogFileWatcher(logPath)
 	defer lw.Close()
 
@@ -164,6 +173,9 @@ func (s *Server) streamSessionTranscriptLogRawWithEmitter(ctx context.Context, e
 
 			if lastSentUUID == "" {
 				toSend = rawMessages
+				if initialTail > 0 {
+					toSend = tailSlice(toSend, initialTail)
+				}
 			} else {
 				found := false
 				for i, uuid := range uuids {
@@ -244,7 +256,7 @@ func (s *Server) streamSessionTranscriptLogRawWithEmitter(ctx context.Context, e
 	})
 }
 
-func (s *Server) streamSessionTranscriptLogWithEmitter(ctx context.Context, emitter sessionStreamEmitter, info session.Info, logPath string) {
+func (s *Server) streamSessionTranscriptLogWithEmitter(ctx context.Context, emitter sessionStreamEmitter, info session.Info, logPath string, initialTail int) {
 	lw := newLogFileWatcher(logPath)
 	defer lw.Close()
 
@@ -287,6 +299,9 @@ func (s *Server) streamSessionTranscriptLogWithEmitter(ctx context.Context, emit
 
 			if lastSentUUID == "" {
 				toSend = turns
+				if initialTail > 0 {
+					toSend = tailSlice(toSend, initialTail)
+				}
 			} else {
 				found := false
 				for i, uuid := range uuids {

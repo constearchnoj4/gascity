@@ -228,7 +228,7 @@ func TestClientAPIErrorNotConnError(t *testing.T) {
 	}
 }
 
-func TestClientReadOnlyFallback(t *testing.T) {
+func TestClientReadOnlyError(t *testing.T) {
 	srv := wsTestServer(t, func(action string, req map[string]any, conn *websocket.Conn) {
 		id, _ := req["id"].(string)
 		_ = conn.WriteJSON(map[string]any{"type": "error", "id": id, "code": "read_only", "message": "mutations disabled: server bound to non-localhost address"})
@@ -240,39 +240,11 @@ func TestClientReadOnlyFallback(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !ShouldFallback(err) {
-		t.Errorf("ShouldFallback = false for read-only rejection: %v", err)
+	if got := err.Error(); got != "mutations disabled: server bound to non-localhost address" {
+		t.Errorf("error = %q, want read-only message", got)
 	}
 	if IsConnError(err) {
 		t.Errorf("IsConnError = true for read-only rejection (should be false)")
-	}
-}
-
-func TestClientConnErrorShouldFallback(t *testing.T) {
-	c := NewClient("http://127.0.0.1:1")
-	err := c.SuspendCity()
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-	if !ShouldFallback(err) {
-		t.Errorf("ShouldFallback = false for connection error: %v", err)
-	}
-}
-
-func TestClientBusinessErrorNoFallback(t *testing.T) {
-	srv := wsTestServer(t, func(action string, req map[string]any, conn *websocket.Conn) {
-		id, _ := req["id"].(string)
-		_ = conn.WriteJSON(map[string]any{"type": "error", "id": id, "code": "not_found", "message": "agent 'nope' not found"})
-	})
-	defer srv.Close()
-	c := NewClient(srv.URL)
-	defer c.Close()
-	err := c.SuspendAgent("nope")
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-	if ShouldFallback(err) {
-		t.Errorf("ShouldFallback = true for business error: %v", err)
 	}
 }
 
@@ -931,6 +903,301 @@ func TestClientUnsubscribe(t *testing.T) {
 
 	if n := callCount.Load(); n != 0 {
 		t.Errorf("callback called %d times after unsubscribe, want 0", n)
+	}
+}
+
+func TestClientResubscribesEventsAfterReconnect(t *testing.T) {
+	type socketRequest struct {
+		Type    string         `json:"type"`
+		ID      string         `json:"id"`
+		Action  string         `json:"action"`
+		Payload map[string]any `json:"payload"`
+	}
+
+	readRequest := func(conn *websocket.Conn) socketRequest {
+		t.Helper()
+		var req socketRequest
+		if err := conn.ReadJSON(&req); err != nil {
+			t.Errorf("read request: %v", err)
+		}
+		return req
+	}
+
+	var connections atomic.Int32
+	stopSeen := make(chan string, 1)
+	srv := newRawWSServer(t, func(conn *websocket.Conn) {
+		switch connections.Add(1) {
+		case 1:
+			req := readRequest(conn)
+			if req.Action != "subscription.start" {
+				t.Errorf("first action = %q, want subscription.start", req.Action)
+				return
+			}
+			if got := req.Payload["kind"]; got != "events" {
+				t.Errorf("first kind = %v, want events", got)
+			}
+			if _, ok := req.Payload["after_seq"]; ok {
+				t.Errorf("first payload unexpectedly had after_seq: %#v", req.Payload)
+			}
+			if err := conn.WriteJSON(map[string]any{
+				"type":   "response",
+				"id":     req.ID,
+				"result": map[string]any{"subscription_id": "server-sub-1", "status": "ok"},
+			}); err != nil {
+				t.Errorf("write subscribe response: %v", err)
+				return
+			}
+			if err := conn.WriteJSON(map[string]any{
+				"type":            "event",
+				"subscription_id": "server-sub-1",
+				"event_type":      "bead.created",
+				"index":           41,
+				"payload":         map[string]any{"id": "bead-41"},
+			}); err != nil {
+				t.Errorf("write first event: %v", err)
+			}
+			time.Sleep(100 * time.Millisecond)
+			_ = conn.Close()
+		case 2:
+			req := readRequest(conn)
+			if req.Action != "subscription.start" {
+				t.Errorf("second action = %q, want subscription.start", req.Action)
+				return
+			}
+			if got := req.Payload["kind"]; got != "events" {
+				t.Errorf("second kind = %v, want events", got)
+			}
+			if got := req.Payload["after_seq"]; got != float64(41) {
+				t.Errorf("second after_seq = %#v, want 41", got)
+			}
+			if err := conn.WriteJSON(map[string]any{
+				"type":   "response",
+				"id":     req.ID,
+				"result": map[string]any{"subscription_id": "server-sub-2", "status": "ok"},
+			}); err != nil {
+				t.Errorf("write reconnect subscribe response: %v", err)
+				return
+			}
+			if err := conn.WriteJSON(map[string]any{
+				"type":            "event",
+				"subscription_id": "server-sub-2",
+				"event_type":      "bead.created",
+				"index":           42,
+				"payload":         map[string]any{"id": "bead-42"},
+			}); err != nil {
+				t.Errorf("write second event: %v", err)
+				return
+			}
+			stopReq := readRequest(conn)
+			if stopReq.Action != "subscription.stop" {
+				t.Errorf("stop action = %q, want subscription.stop", stopReq.Action)
+				return
+			}
+			if got := stopReq.Payload["subscription_id"]; got != "server-sub-2" {
+				t.Errorf("stop subscription_id = %#v, want server-sub-2", got)
+			}
+			select {
+			case stopSeen <- stopReq.Payload["subscription_id"].(string):
+			default:
+			}
+			_ = conn.WriteJSON(map[string]any{
+				"type":   "response",
+				"id":     stopReq.ID,
+				"result": map[string]any{"subscription_id": "server-sub-2", "status": "ok"},
+			})
+		default:
+			t.Errorf("unexpected extra websocket connection")
+		}
+	})
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	defer c.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	eventsCh := make(chan SubscriptionEvent, 4)
+	subID, err := c.SubscribeEvents(ctx, 0, func(evt SubscriptionEvent) {
+		eventsCh <- evt
+	})
+	if err != nil {
+		t.Fatalf("SubscribeEvents: %v", err)
+	}
+	if subID != "server-sub-1" {
+		t.Fatalf("subscription_id = %q, want stable server-sub-1", subID)
+	}
+
+	var first, second SubscriptionEvent
+	select {
+	case first = <-eventsCh:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout waiting for first event")
+	}
+	select {
+	case second = <-eventsCh:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout waiting for resumed event")
+	}
+
+	if first.SubscriptionID != subID {
+		t.Fatalf("first event subscription_id = %q, want %q", first.SubscriptionID, subID)
+	}
+	if second.SubscriptionID != subID {
+		t.Fatalf("second event subscription_id = %q, want stable %q", second.SubscriptionID, subID)
+	}
+	if second.Index != 42 {
+		t.Fatalf("second event index = %d, want 42", second.Index)
+	}
+
+	if err := c.Unsubscribe(subID); err != nil {
+		t.Fatalf("Unsubscribe: %v", err)
+	}
+
+	select {
+	case stopped := <-stopSeen:
+		if stopped != "server-sub-2" {
+			t.Fatalf("stop routed to %q, want server-sub-2", stopped)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout waiting for unsubscribe request")
+	}
+}
+
+func TestClientResubscribesSessionStreamAfterReconnect(t *testing.T) {
+	type socketRequest struct {
+		Type    string         `json:"type"`
+		ID      string         `json:"id"`
+		Action  string         `json:"action"`
+		Payload map[string]any `json:"payload"`
+	}
+
+	readRequest := func(conn *websocket.Conn) socketRequest {
+		t.Helper()
+		var req socketRequest
+		if err := conn.ReadJSON(&req); err != nil {
+			t.Errorf("read request: %v", err)
+		}
+		return req
+	}
+
+	var connections atomic.Int32
+	srv := newRawWSServer(t, func(conn *websocket.Conn) {
+		switch connections.Add(1) {
+		case 1:
+			req := readRequest(conn)
+			if req.Action != "subscription.start" {
+				t.Errorf("first action = %q, want subscription.start", req.Action)
+				return
+			}
+			if got := req.Payload["kind"]; got != "session.stream" {
+				t.Errorf("first kind = %v, want session.stream", got)
+			}
+			if got := req.Payload["target"]; got != "sess-abc" {
+				t.Errorf("first target = %v, want sess-abc", got)
+			}
+			if got := req.Payload["format"]; got != "jsonl" {
+				t.Errorf("first format = %v, want jsonl", got)
+			}
+			if got := req.Payload["turns"]; got != float64(2) {
+				t.Errorf("first turns = %#v, want 2", got)
+			}
+			_ = conn.WriteJSON(map[string]any{
+				"type":   "response",
+				"id":     req.ID,
+				"result": map[string]any{"subscription_id": "stream-sub-1", "status": "ok"},
+			})
+			_ = conn.WriteJSON(map[string]any{
+				"type":            "event",
+				"subscription_id": "stream-sub-1",
+				"event_type":      "session.turn",
+				"payload":         map[string]any{"text": "first"},
+			})
+			time.Sleep(100 * time.Millisecond)
+			_ = conn.Close()
+		case 2:
+			req := readRequest(conn)
+			if req.Action != "subscription.start" {
+				t.Errorf("second action = %q, want subscription.start", req.Action)
+				return
+			}
+			if got := req.Payload["kind"]; got != "session.stream" {
+				t.Errorf("second kind = %v, want session.stream", got)
+			}
+			if got := req.Payload["target"]; got != "sess-abc" {
+				t.Errorf("second target = %v, want sess-abc", got)
+			}
+			if got := req.Payload["format"]; got != "jsonl" {
+				t.Errorf("second format = %v, want jsonl", got)
+			}
+			if got := req.Payload["turns"]; got != float64(2) {
+				t.Errorf("second turns = %#v, want 2", got)
+			}
+			if _, ok := req.Payload["after_seq"]; ok {
+				t.Errorf("session stream payload unexpectedly had after_seq: %#v", req.Payload)
+			}
+			if err := conn.WriteJSON(map[string]any{
+				"type":   "response",
+				"id":     req.ID,
+				"result": map[string]any{"subscription_id": "stream-sub-2", "status": "ok"},
+			}); err != nil {
+				t.Errorf("write reconnect subscribe response: %v", err)
+				return
+			}
+			if err := conn.WriteJSON(map[string]any{
+				"type":            "event",
+				"subscription_id": "stream-sub-2",
+				"event_type":      "session.turn",
+				"payload":         map[string]any{"text": "second"},
+			}); err != nil {
+				t.Errorf("write second stream event: %v", err)
+				return
+			}
+			for {
+				if _, _, err := conn.ReadMessage(); err != nil {
+					return
+				}
+			}
+		default:
+			t.Errorf("unexpected extra websocket connection")
+		}
+	})
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	defer c.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	eventsCh := make(chan SubscriptionEvent, 4)
+	subID, err := c.SubscribeSessionStream(ctx, "sess-abc", "jsonl", 2, func(evt SubscriptionEvent) {
+		eventsCh <- evt
+	})
+	if err != nil {
+		t.Fatalf("SubscribeSessionStream: %v", err)
+	}
+	if subID != "stream-sub-1" {
+		t.Fatalf("subscription_id = %q, want stable stream-sub-1", subID)
+	}
+
+	var first, second SubscriptionEvent
+	select {
+	case first = <-eventsCh:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout waiting for first stream event")
+	}
+	select {
+	case second = <-eventsCh:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout waiting for resumed stream event")
+	}
+
+	if first.SubscriptionID != subID {
+		t.Fatalf("first stream event subscription_id = %q, want %q", first.SubscriptionID, subID)
+	}
+	if second.SubscriptionID != subID {
+		t.Fatalf("second stream event subscription_id = %q, want stable %q", second.SubscriptionID, subID)
 	}
 }
 

@@ -364,8 +364,6 @@ func (s *Server) handleSocketRequest(req *socketRequestEnvelope) (socketActionRe
 func (sm *SupervisorMux) handleSocketRequest(req *socketRequestEnvelope) (socketActionResult, *socketErrorEnvelope) {
 	// Supervisor-level actions (no city scope required).
 	switch req.Action {
-	case "health.get":
-		return socketActionResult{Result: sm.healthResponse()}, nil
 	case "cities.list":
 		return socketActionResult{Result: sm.citiesList()}, nil
 	case "events.list":

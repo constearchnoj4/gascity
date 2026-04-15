@@ -2,9 +2,12 @@ package main
 
 import (
 	"bytes"
+	"net"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gastownhall/gascity/internal/config"
 	"github.com/gastownhall/gascity/internal/fsys"
@@ -152,6 +155,88 @@ dir = "myrig"
 	}
 	if strings.Contains(data, "pack-worker") {
 		t.Errorf("city.toml should NOT contain pack agent after resume:\n%s", data)
+	}
+}
+
+func startControllerPingSocket(t *testing.T, cityPath string) {
+	t.Helper()
+	sockPath := controllerSocketPath(cityPath)
+	if err := os.MkdirAll(filepath.Dir(sockPath), 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q): %v", filepath.Dir(sockPath), err)
+	}
+	lis, err := net.Listen("unix", sockPath)
+	if err != nil {
+		t.Fatalf("Listen(unix, %q): %v", sockPath, err)
+	}
+	t.Cleanup(func() {
+		lis.Close()         //nolint:errcheck
+		os.Remove(sockPath) //nolint:errcheck
+	})
+
+	go func() {
+		for {
+			conn, err := lis.Accept()
+			if err != nil {
+				return
+			}
+			go func(conn net.Conn) {
+				defer conn.Close() //nolint:errcheck
+				_ = conn.SetDeadline(time.Now().Add(2 * time.Second))
+				buf := make([]byte, 64)
+				n, err := conn.Read(buf)
+				if err != nil || n == 0 {
+					return
+				}
+				if strings.TrimSpace(string(buf[:n])) == "ping" {
+					_, _ = conn.Write([]byte("123\n"))
+				}
+			}(conn)
+		}
+	}()
+}
+
+func unusedTCPPort(t *testing.T) int {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen(tcp): %v", err)
+	}
+	defer ln.Close() //nolint:errcheck
+	return ln.Addr().(*net.TCPAddr).Port
+}
+
+func TestCmdSuspendFailsClosedWhenControllerAPIUnavailable(t *testing.T) {
+	cityPath := t.TempDir()
+	startControllerPingSocket(t, cityPath)
+
+	cfg := config.DefaultCity("bright-lights")
+	cfg.API.Port = unusedTCPPort(t)
+	data, err := cfg.Marshal()
+	if err != nil {
+		t.Fatalf("Marshal(): %v", err)
+	}
+	tomlPath := filepath.Join(cityPath, "city.toml")
+	if err := os.WriteFile(tomlPath, data, 0o644); err != nil {
+		t.Fatalf("write city.toml: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := cmdSuspend([]string{cityPath}, &stdout, &stderr); code != 1 {
+		t.Fatalf("cmdSuspend() = %d, want 1; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout = %q, want empty on failed suspend", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "websocket connect failed") {
+		t.Fatalf("stderr = %q, want websocket connect failed", stderr.String())
+	}
+
+	reloaded, err := config.Load(fsys.OSFS{}, tomlPath)
+	if err != nil {
+		t.Fatalf("Load(%q): %v", tomlPath, err)
+	}
+	if reloaded.Workspace.Suspended {
+		t.Fatal("workspace.suspended = true, want unchanged false when API routing fails")
 	}
 }
 

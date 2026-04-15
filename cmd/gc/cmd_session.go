@@ -1213,12 +1213,10 @@ func cmdSessionSubmit(args []string, intent session.SubmitIntent, stdout, stderr
 	}
 
 	if c := apiClient(cityPath); c != nil {
-		resp, err := c.SubmitSession(target, message, intent)
-		if err == nil {
+		if resp, err := c.SubmitSession(target, message, intent); err == nil {
 			emitSessionSubmitResult(stdout, target, intent, resp.Queued)
 			return 0
-		}
-		if !api.ShouldFallback(err) {
+		} else {
 			fmt.Fprintf(stderr, "gc session submit: %v\n", err) //nolint:errcheck // best-effort stderr
 			return 1
 		}

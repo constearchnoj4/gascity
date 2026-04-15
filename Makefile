@@ -21,7 +21,7 @@ LDFLAGS := -X main.version=$(VERSION) \
            -X main.commit=$(COMMIT) \
            -X main.date=$(BUILD_TIME)
 
-.PHONY: build check check-all check-bd check-docker check-docs check-dolt lint fmt-check fmt vet test test-acceptance test-acceptance-b test-acceptance-c test-acceptance-all test-tutorial-goldens test-tutorial-regression test-tutorial test-integration test-mcp-mail test-docker test-k8s test-cover cover install install-tools install-buildx setup clean generate check-schema docker-base docker-agent docker-controller docker-mail docker-load-desktop docs-dev
+.PHONY: build check check-all check-bd check-contracts check-docker check-docs check-dolt lint fmt-check fmt vet test test-acceptance test-acceptance-b test-acceptance-c test-acceptance-all test-tutorial-goldens test-tutorial-regression test-tutorial test-integration test-mcp-mail test-docker test-k8s test-cover cover install install-tools install-buildx setup clean generate check-schema docker-base docker-agent docker-controller docker-mail docker-load-desktop docs-dev
 
 ## build: compile gc binary with version metadata
 build:
@@ -138,6 +138,11 @@ test-tutorial-regression: test-tutorial-goldens
 ## check-docs: verify docs sync tests
 check-docs:
 	go test ./test/docsync
+
+## check-contracts: verify generated API specs and DTOs are fresh
+check-contracts:
+	go test ./test/docsync -run 'TestSchemaFreshness|TestAsyncAPIActionsMatchGoCode'
+	./scripts/check-contract-dtos.sh
 
 # Packages for coverage — exclude noise:
 #   session/tmux: integration-test-only, not meaningful for unit coverage

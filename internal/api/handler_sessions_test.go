@@ -2208,8 +2208,8 @@ func TestHandleSessionTranscriptClosedSession(t *testing.T) {
 		ID:     "t1",
 		Action: "session.transcript",
 		Payload: map[string]any{
-			"id":   info.ID,
-			"tail": 0,
+			"id":    info.ID,
+			"turns": 0,
 		},
 	})
 	var resp wsResponseEnvelope
@@ -2408,7 +2408,7 @@ func TestHandleSessionTranscriptRawIncludesAllTypes(t *testing.T) {
 		Payload: map[string]any{
 			"id":     info.ID,
 			"format": "raw",
-			"tail":   0,
+			"turns":  0,
 		},
 	})
 	var resp wsResponseEnvelope

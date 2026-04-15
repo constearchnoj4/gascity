@@ -21,6 +21,9 @@ npm ci
 npm run generate
 ```
 
+`npm run generate` clears the existing DTO output directories before
+regenerating them so stale contract artifacts do not survive schema changes.
+
 ## Scope
 
 The contract currently covers the shared websocket envelope types plus the

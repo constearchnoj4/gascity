@@ -3,9 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
-	"net"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/gastownhall/gascity/internal/api"
@@ -140,15 +138,7 @@ func cmdServiceRestart(name string, stdout, stderr io.Writer) int {
 
 func serviceRestartClient(cityPath string, cfg *config.City) *api.Client {
 	if controllerAlive(cityPath) != 0 && cfg.API.Port > 0 {
-		bind := cfg.API.BindOrDefault()
-		switch bind {
-		case "0.0.0.0":
-			bind = "127.0.0.1"
-		case "::", "[::]":
-			bind = "::1"
-		}
-		baseURL := fmt.Sprintf("http://%s", net.JoinHostPort(bind, strconv.Itoa(cfg.API.Port)))
-		return api.NewClient(baseURL)
+		return api.NewClient(apiBaseURL(cfg.API.BindOrDefault(), cfg.API.Port))
 	}
 	if client := supervisorCityAPIClient(cityPath); client != nil {
 		return client
@@ -276,15 +266,7 @@ func lookupService(cfg *config.City, name string) (config.Service, bool) {
 
 func serviceReadClient(cityPath string, cfg *config.City) serviceStatusReader {
 	if controllerAlive(cityPath) != 0 && cfg.API.Port > 0 {
-		bind := cfg.API.BindOrDefault()
-		switch bind {
-		case "0.0.0.0":
-			bind = "127.0.0.1"
-		case "::", "[::]":
-			bind = "::1"
-		}
-		baseURL := fmt.Sprintf("http://%s", net.JoinHostPort(bind, strconv.Itoa(cfg.API.Port)))
-		return api.NewClient(baseURL)
+		return api.NewClient(apiBaseURL(cfg.API.BindOrDefault(), cfg.API.Port))
 	}
 	if client := supervisorCityAPIClient(cityPath); client != nil {
 		return client

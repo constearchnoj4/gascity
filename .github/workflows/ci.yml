@@ -104,6 +104,9 @@ jobs:
       - name: Docs
         run: make check-docs
 
+      - name: Contracts
+        run: make check-contracts
+
       - name: Acceptance tests (Tier A)
         run: make test-acceptance
 

@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/gastownhall/gascity/internal/events"
-	"github.com/gastownhall/gascity/internal/telemetry"
 	"github.com/gastownhall/gascity/internal/session"
+	"github.com/gastownhall/gascity/internal/telemetry"
 	"github.com/gorilla/websocket"
 )
 
@@ -355,7 +355,10 @@ func (s *Server) startSessionStreamSubscription(parent context.Context, sess *so
 		return socketActionResult{}, newSocketError(req.ID, "not_found", "session "+id+" has no live output")
 	}
 
-	format := payload.Format
+	format, err := normalizeSessionTranscriptFormat(payload.Format)
+	if err != nil {
+		return socketActionResult{}, socketErrorFor(req.ID, err)
+	}
 	subID := sess.newSubscriptionID()
 	subCtx, cancel := context.WithCancel(parent)
 	sess.registerSubscription(subID, cancel)
@@ -371,18 +374,18 @@ func (s *Server) startSessionStreamSubscription(parent context.Context, sess *so
 			emitter := newSocketSessionStreamEmitter(sess, subID)
 			if info.Closed {
 				if format == "raw" {
-					s.emitClosedSessionSnapshotRawWithEmitter(emitter, info, path)
+					s.emitClosedSessionSnapshotRawWithEmitter(emitter, info, path, payload.Turns)
 				} else {
-					s.emitClosedSessionSnapshotWithEmitter(emitter, info, path)
+					s.emitClosedSessionSnapshotWithEmitter(emitter, info, path, payload.Turns)
 				}
 				return
 			}
 			switch {
 			case path != "":
 				if format == "raw" {
-					s.streamSessionTranscriptLogRawWithEmitter(subCtx, emitter, info, path)
+					s.streamSessionTranscriptLogRawWithEmitter(subCtx, emitter, info, path, payload.Turns)
 				} else {
-					s.streamSessionTranscriptLogWithEmitter(subCtx, emitter, info, path)
+					s.streamSessionTranscriptLogWithEmitter(subCtx, emitter, info, path, payload.Turns)
 				}
 			case format == "raw":
 				if running {
@@ -403,7 +406,7 @@ func (s *Server) startSessionStreamSubscription(parent context.Context, sess *so
 	}
 
 	return socketActionResult{
-		Result: map[string]string{"subscription_id": subID, "kind": payload.Kind},
+		Result:     map[string]string{"subscription_id": subID, "kind": payload.Kind},
 		AfterWrite: start,
 	}, nil
 }

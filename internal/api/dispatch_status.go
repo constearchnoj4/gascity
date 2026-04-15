@@ -8,12 +8,6 @@ func init() {
 		ServerRoles: actionServerRoleSupervisor,
 	})
 
-	RegisterVoidAction("health.get", ActionDef{
-		Description: "Health check",
-	}, func(_ context.Context, s *Server) (map[string]any, error) {
-		return s.healthResponse(), nil
-	})
-
 	RegisterVoidAction("status.get", ActionDef{
 		Description:       "City status snapshot",
 		RequiresCityScope: true,

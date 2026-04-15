@@ -63,6 +63,11 @@ var (
 	actionTable   = map[string]*actionEntry{}
 )
 
+var protocolCapabilityNames = []string{
+	"subscription.start",
+	"subscription.stop",
+}
+
 // RegisterAction registers a typed action handler. The generic In/Out types
 // drive both runtime dispatch (JSON decode/encode) AND spec generation (the
 // reflect.Type is fed to the swaggest reflector). Handlers are pure business
@@ -262,12 +267,13 @@ func EnvelopeTypes() specgen.EnvelopeTypes {
 
 // actionTableCapabilities returns sorted action names for the hello envelope.
 func actionTableCapabilities(role actionServerRoles) []string {
-	caps := make([]string, 0, len(actionTable))
+	caps := make([]string, 0, len(actionTable)+len(protocolCapabilityNames))
 	for name, entry := range actionTable {
 		if entry.supportsRole(role) {
 			caps = append(caps, name)
 		}
 	}
+	caps = append(caps, protocolCapabilityNames...)
 	sort.Strings(caps)
 	return caps
 }

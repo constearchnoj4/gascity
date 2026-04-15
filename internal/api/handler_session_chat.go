@@ -80,6 +80,49 @@ type sessionTranscriptQuery struct {
 	Raw    bool
 }
 
+func normalizeSessionTranscriptFormat(format string) (string, error) {
+	switch format {
+	case "", "text":
+		return "text", nil
+	case "raw", "jsonl":
+		return "raw", nil
+	default:
+		return "", httpError{status: http.StatusBadRequest, code: "invalid", message: "format must be one of: text, raw, jsonl"}
+	}
+}
+
+func sliceTranscriptEntries(entries []*sessionlog.Entry, before string, tail int) ([]*sessionlog.Entry, *sessionlog.PaginationInfo) {
+	totalCount := len(entries)
+	working := entries
+	if before != "" {
+		for i, entry := range entries {
+			if entry.UUID == before {
+				working = entries[:i]
+				break
+			}
+		}
+	}
+
+	sliced := working
+	if tail > 0 {
+		sliced = tailSlice(working, tail)
+	}
+
+	if before == "" && tail <= 0 {
+		return sliced, nil
+	}
+
+	info := &sessionlog.PaginationInfo{
+		HasOlderMessages:     len(sliced) < len(working),
+		TotalMessageCount:    totalCount,
+		ReturnedMessageCount: len(sliced),
+	}
+	if len(sliced) > 0 && len(sliced) < len(working) {
+		info.TruncatedBeforeMessage = sliced[0].UUID
+	}
+	return sliced, info
+}
+
 func (s *Server) sessionLogPaths() []string {
 	if s.sessionLogSearchPaths != nil {
 		return s.sessionLogSearchPaths
@@ -516,17 +559,13 @@ func (s *Server) getSessionTranscript(target string, query sessionTranscriptQuer
 
 	if path != "" {
 		if query.Raw {
-			var rawSess *sessionlog.Session
-			if query.Before != "" {
-				rawSess, err = sessionlog.ReadProviderFileRawOlder(info.Provider, path, query.Tail, query.Before)
-			} else {
-				rawSess, err = sessionlog.ReadProviderFileRaw(info.Provider, path, query.Tail)
-			}
+			rawSess, err := sessionlog.ReadProviderFileRaw(info.Provider, path, 0)
 			if err != nil {
 				return nil, httpError{status: http.StatusInternalServerError, code: "internal", message: "reading session log: " + err.Error()}
 			}
-			msgs := make([]json.RawMessage, 0, len(rawSess.Messages))
-			for _, entry := range rawSess.Messages {
+			entries, pagination := sliceTranscriptEntries(rawSess.Messages, query.Before, query.Tail)
+			msgs := make([]json.RawMessage, 0, len(entries))
+			for _, entry := range entries {
 				if len(entry.Raw) > 0 {
 					msgs = append(msgs, entry.Raw)
 				}
@@ -536,22 +575,18 @@ func (s *Server) getSessionTranscript(target string, query sessionTranscriptQuer
 				Template:   info.Template,
 				Format:     "raw",
 				Messages:   msgs,
-				Pagination: rawSess.Pagination,
+				Pagination: pagination,
 			}, nil
 		}
 
-		var sess *sessionlog.Session
-		if query.Before != "" {
-			sess, err = sessionlog.ReadProviderFileOlder(info.Provider, path, query.Tail, query.Before)
-		} else {
-			sess, err = sessionlog.ReadProviderFile(info.Provider, path, query.Tail)
-		}
+		sess, err := sessionlog.ReadProviderFile(info.Provider, path, 0)
 		if err != nil {
 			return nil, httpError{status: http.StatusInternalServerError, code: "internal", message: "reading session log: " + err.Error()}
 		}
 
-		turns := make([]outputTurn, 0, len(sess.Messages))
-		for _, entry := range sess.Messages {
+		entries, pagination := sliceTranscriptEntries(sess.Messages, query.Before, query.Tail)
+		turns := make([]outputTurn, 0, len(entries))
+		for _, entry := range entries {
 			turn := entryToTurn(entry)
 			if turn.Text == "" {
 				continue
@@ -563,7 +598,7 @@ func (s *Server) getSessionTranscript(target string, query sessionTranscriptQuer
 			Template:   info.Template,
 			Format:     "conversation",
 			Turns:      turns,
-			Pagination: sess.Pagination,
+			Pagination: pagination,
 		}, nil
 	}
 

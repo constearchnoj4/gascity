@@ -56,8 +56,8 @@ func TestAgentOutputConversation(t *testing.T) {
 		ID:     "test-1",
 		Action: "session.transcript",
 		Payload: map[string]any{
-			"id":   info.ID,
-			"tail": 0,
+			"id":    info.ID,
+			"turns": 0,
 		},
 	})
 
@@ -123,8 +123,8 @@ func TestAgentOutputConversationUsesConfiguredWorkDir(t *testing.T) {
 		ID:     "test-workdir",
 		Action: "session.transcript",
 		Payload: map[string]any{
-			"id":   info.ID,
-			"tail": 0,
+			"id":    info.ID,
+			"turns": 0,
 		},
 	})
 
@@ -200,8 +200,8 @@ func TestAgentOutputCityScoped(t *testing.T) {
 		ID:     "test-city-scoped",
 		Action: "session.transcript",
 		Payload: map[string]any{
-			"id":   info.ID,
-			"tail": 0,
+			"id":    info.ID,
+			"turns": 0,
 		},
 	})
 
@@ -254,7 +254,7 @@ func TestAgentOutputPagination(t *testing.T) {
 	defer conn.Close()
 	drainWSHello(t, conn)
 
-	// tail=1 should return messages from the last compact boundary onward.
+	// turns=1 should return only the most recent turn.
 	writeWSJSON(t, conn, wsRequestEnvelope{
 		Type:   "request",
 		ID:     "test-pagination",
@@ -276,11 +276,12 @@ func TestAgentOutputPagination(t *testing.T) {
 		t.Fatalf("unmarshal result: %v", err)
 	}
 
-	// Boundary text + 2 turns after = 3 turns (system entry "compacted 2" + user + assistant).
-	if len(body.Turns) != 3 {
-		t.Fatalf("got %d turns, want 3", len(body.Turns))
+	if len(body.Turns) != 1 {
+		t.Fatalf("got %d turns, want 1", len(body.Turns))
 	}
-
+	if body.Turns[0].Text != "third reply" {
+		t.Fatalf("turn[0] = %+v, want final assistant reply", body.Turns[0])
+	}
 	if body.Pagination == nil {
 		t.Fatal("pagination is nil, expected non-nil")
 	}
