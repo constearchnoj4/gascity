@@ -152,22 +152,6 @@ func mutationError(err error) error {
 // errMutationsNotSupported is returned when the state doesn't implement StateMutator.
 var errMutationsNotSupported = huma.Error501NotImplemented("mutations not supported")
 
-// apiError is a custom error type that implements huma.StatusError and marshals
-// into the legacy Error JSON shape (code, message, details). This lets Huma
-// handlers return structured error responses that match the original wire format
-// expected by existing clients and tests.
-type apiError struct {
-	StatusCode int          `json:"-"`
-	Code       string       `json:"code"`
-	Message    string       `json:"message"`
-	Details    []FieldError `json:"details,omitempty"`
-}
-
-func (e *apiError) Error() string { return e.Message }
-
-// GetStatus implements huma.StatusError.
-func (e *apiError) GetStatus() int { return e.StatusCode }
-
 // --- Simple response types ---
 
 // OKResponse is a simple success response body.
@@ -1037,7 +1021,7 @@ type ExtMsgInboundInput struct {
 
 // ExtMsgInboundOutput is the Huma output for POST /v0/extmsg/inbound.
 type ExtMsgInboundOutput struct {
-	Body json.RawMessage
+	Body extmsg.InboundResult
 }
 
 // ExtMsgOutboundInput is the Huma input for POST /v0/extmsg/outbound.
@@ -1053,7 +1037,7 @@ type ExtMsgOutboundInput struct {
 
 // ExtMsgOutboundOutput is the Huma output for POST /v0/extmsg/outbound.
 type ExtMsgOutboundOutput struct {
-	Body json.RawMessage
+	Body extmsg.OutboundResult
 }
 
 // ExtMsgBindingListInput is the Huma input for GET /v0/extmsg/bindings.
@@ -1072,7 +1056,7 @@ type ExtMsgBindInput struct {
 
 // ExtMsgBindOutput is the Huma output for POST /v0/extmsg/bind.
 type ExtMsgBindOutput struct {
-	Body json.RawMessage
+	Body extmsg.SessionBindingRecord
 }
 
 // ExtMsgUnbindInput is the Huma input for POST /v0/extmsg/unbind.
@@ -1084,8 +1068,13 @@ type ExtMsgUnbindInput struct {
 }
 
 // ExtMsgUnbindOutput is the Huma output for POST /v0/extmsg/unbind.
+// ExtMsgUnbindBody is the response body for POST /v0/extmsg/unbind.
+type ExtMsgUnbindBody struct {
+	Unbound []extmsg.SessionBindingRecord `json:"unbound" doc:"Bindings that were removed."`
+}
+
 type ExtMsgUnbindOutput struct {
-	Body json.RawMessage
+	Body ExtMsgUnbindBody
 }
 
 // ExtMsgGroupLookupInput is the Huma input for GET /v0/extmsg/groups.
@@ -1099,7 +1088,7 @@ type ExtMsgGroupLookupInput struct {
 
 // ExtMsgGroupOutput is the Huma output for GET /v0/extmsg/groups.
 type ExtMsgGroupOutput struct {
-	Body json.RawMessage
+	Body extmsg.ConversationGroupRecord
 }
 
 // ExtMsgGroupEnsureInput is the Huma input for POST /v0/extmsg/groups.
@@ -1114,7 +1103,7 @@ type ExtMsgGroupEnsureInput struct {
 
 // ExtMsgGroupEnsureOutput is the Huma output for POST /v0/extmsg/groups.
 type ExtMsgGroupEnsureOutput struct {
-	Body json.RawMessage
+	Body extmsg.ConversationGroupRecord
 }
 
 // ExtMsgParticipantUpsertInput is the Huma input for POST /v0/extmsg/participants.
@@ -1130,7 +1119,7 @@ type ExtMsgParticipantUpsertInput struct {
 
 // ExtMsgParticipantOutput is the Huma output for POST /v0/extmsg/participants.
 type ExtMsgParticipantOutput struct {
-	Body json.RawMessage
+	Body extmsg.ConversationGroupParticipant
 }
 
 // ExtMsgParticipantRemoveInput is the Huma input for DELETE /v0/extmsg/participants.
