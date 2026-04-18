@@ -252,6 +252,9 @@ func cmdSessionNew(args []string, alias, title, titleHint string, noAttach bool,
 				if resolved.Kind != "" && resolved.Kind != resolved.Name {
 					kindMeta["provider_kind"] = resolved.Kind
 				}
+				if resolved.BuiltinAncestor != "" && resolved.BuiltinAncestor != resolved.Name {
+					kindMeta["builtin_ancestor"] = resolved.BuiltinAncestor
+				}
 				info, createErr = mgr.CreateAliasedBeadOnlyNamedWithMetadata(alias, explicitName, canonicalTemplate, title, resolved.CommandString(), workDir, resolved.Name, found.Session, session.ProviderResume{
 					ResumeFlag:    resolved.ResumeFlag,
 					ResumeStyle:   resolved.ResumeStyle,
@@ -315,6 +318,9 @@ func cmdSessionNew(args []string, alias, title, titleHint string, noAttach bool,
 	}
 	if resolved.Kind != "" && resolved.Kind != resolved.Name {
 		kindMeta["provider_kind"] = resolved.Kind
+	}
+	if resolved.BuiltinAncestor != "" && resolved.BuiltinAncestor != resolved.Name {
+		kindMeta["builtin_ancestor"] = resolved.BuiltinAncestor
 	}
 	var info session.Info
 	err = session.WithCitySessionIdentifierLocks(cityPath, reservationIDs, func() error {

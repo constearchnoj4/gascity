@@ -1194,12 +1194,25 @@ func namedSessionAllowsControllerWorkQuery(cityPath string, cfg *config.City, sp
 // whose resolved provider is not Claude but which opt in explicitly via
 // install_agent_hooks = ["claude"] still flow through hooks.Install here.
 func installAgentSideEffects(bp *agentBuildParams, cfgAgent *config.Agent, tp TemplateParams, stderr io.Writer) {
+	// Install provider hooks (idempotent filesystem side effect). Route
+	// through the family resolver so wrapped custom aliases (e.g.
+	// [providers.my-fast-claude] base = "builtin:claude") install their
+	// ancestor's hook format rather than erroring with
+	// "unsupported hook provider". Keep the "claude" dedup from main: if
+	// the resolved provider family IS claude, ensureClaudeSettingsArgs
+	// already projected the settings upstream in resolveTemplate, so
+	// drop the explicit "claude" entry here to avoid duplicating the
+	// filesystem write on every reconciler tick.
 	ih := config.ResolveInstallHooks(cfgAgent, bp.workspace)
-	if tp.ResolvedProvider != nil && tp.ResolvedProvider.Name == "claude" {
-		ih = hooksWithoutClaude(ih)
+	if tp.ResolvedProvider != nil {
+		family := config.BuiltinFamily(tp.ResolvedProvider.Name, bp.providers)
+		if family == "claude" || tp.ResolvedProvider.Name == "claude" {
+			ih = hooksWithoutClaude(ih)
+		}
 	}
 	if len(ih) > 0 {
-		if hErr := hooks.Install(bp.fs, bp.cityPath, tp.WorkDir, ih); hErr != nil {
+		resolver := func(name string) string { return config.BuiltinFamily(name, bp.providers) }
+		if hErr := hooks.InstallWithResolver(bp.fs, bp.cityPath, tp.WorkDir, ih, resolver); hErr != nil {
 			fmt.Fprintf(stderr, "agent %q: hooks: %v\n", tp.DisplayName(), hErr) //nolint:errcheck
 		}
 	}

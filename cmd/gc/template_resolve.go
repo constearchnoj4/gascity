@@ -263,7 +263,7 @@ func resolveTemplate(p *agentBuildParams, cfgAgent *config.Agent, qualifiedName 
 		SlingQuery:    cfgAgent.EffectiveSlingQuery(),
 		Env:           cfgAgent.Env,
 	}, p.sessionTemplate, p.stderr, p.packDirs, fragments, p.beadStore)
-	hasHooks := config.AgentHasHooks(cfgAgent, p.workspace, resolved.Name)
+	hasHooks := config.AgentHasHooks(cfgAgent, p.workspace, resolved.Name, p.providers)
 	beacon := runtime.FormatBeaconAt(p.cityName, qualifiedName, !hasHooks, p.beaconTime)
 	if prompt != "" {
 		prompt = beacon + "\n\n" + prompt
@@ -294,7 +294,7 @@ func resolveTemplate(p *agentBuildParams, cfgAgent *config.Agent, qualifiedName 
 		if p.workspace != nil {
 			wsProvider = p.workspace.Provider
 		}
-		provider := effectiveAgentProvider(cfgAgent, wsProvider)
+		provider := effectiveAgentProviderFamily(cfgAgent, wsProvider, p.providers)
 		if _, ok := materialize.VendorSink(provider); ok {
 			scopeRoot := agentScopeRoot(cfgAgent, p.cityPath, p.rigs)
 			canonWorkDir := canonicaliseFilePath(workDir, p.cityPath)
@@ -363,7 +363,7 @@ func resolveTemplate(p *agentBuildParams, cfgAgent *config.Agent, qualifiedName 
 		if p.workspace != nil {
 			wsProvider = p.workspace.Provider
 		}
-		desired := effectiveSkillsForAgent(p.skillCatalog, cfgAgent, wsProvider, p.stderr)
+		desired := effectiveSkillsForAgent(p.skillCatalog, cfgAgent, wsProvider, p.providers, p.stderr)
 		if len(desired) > 0 {
 			fpExtra = mergeSkillFingerprintEntries(fpExtra, desired)
 			if canonWorkDir != scopeRoot {
