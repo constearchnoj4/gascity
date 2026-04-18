@@ -622,7 +622,7 @@ func TestCityRuntimeRunShutsDownSessionsOnContextCancel(t *testing.T) {
 		Stderr: io.Discard,
 	})
 
-	cs := newControllerState(cfg, sp, events.NewFake(), "test-city", cityPath)
+	cs := newControllerState(context.Background(), cfg, sp, events.NewFake(), "test-city", cityPath)
 	cs.cityBeadStore = beads.NewMemStore()
 	cr.setControllerState(cs)
 
