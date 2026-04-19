@@ -135,6 +135,43 @@ name = "worker-v2"
 	}
 }
 
+func TestRevision_IncludesPacksLockWhenPackV2ImportsPresent(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "city.toml", `[workspace]
+name = "test"
+`)
+	writeFile(t, dir, "packs.lock", `schema = 1
+
+[packs."https://example.com/shared.git"]
+version = "1.0.0"
+commit = "aaaa"
+`)
+
+	prov := &Provenance{
+		Sources: []string{filepath.Join(dir, "city.toml")},
+	}
+	cfg := &City{
+		Imports: map[string]Import{
+			"shared": {
+				Source:  "https://example.com/shared.git",
+				Version: "^1.0",
+			},
+		},
+	}
+
+	h1 := Revision(fsys.OSFS{}, prov, cfg, dir)
+	writeFile(t, dir, "packs.lock", `schema = 1
+
+[packs."https://example.com/shared.git"]
+version = "1.1.0"
+commit = "bbbb"
+`)
+	h2 := Revision(fsys.OSFS{}, prov, cfg, dir)
+	if h1 == h2 {
+		t.Error("hash should change when packs.lock changes for PackV2 imports")
+	}
+}
+
 func TestRevision_IncludesConventionDiscoveredCityAgents(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "city.toml", `[workspace]

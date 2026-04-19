@@ -62,6 +62,7 @@ func newImportCmd(stdout, stderr io.Writer) *cobra.Command {
 		newImportInstallCmd(stdout, stderr),
 		newImportUpgradeCmd(stdout, stderr),
 		newImportListCmd(stdout, stderr),
+		newImportWhyCmd(stdout, stderr),
 		newImportMigrateCmd(stdout, stderr),
 	)
 	return cmd
@@ -173,6 +174,25 @@ func newImportListCmd(stdout, stderr io.Writer) *cobra.Command {
 	return cmd
 }
 
+func newImportWhyCmd(stdout, stderr io.Writer) *cobra.Command {
+	return &cobra.Command{
+		Use:   "why <name-or-source>",
+		Short: "Explain why an import is present",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			cityPath, err := resolveImportRoot()
+			if err != nil {
+				fmt.Fprintf(stderr, "gc import why: %v\n", err) //nolint:errcheck
+				return errExit
+			}
+			if doImportWhy(cityPath, args[0], stdout, stderr) != 0 {
+				return errExit
+			}
+			return nil
+		},
+	}
+}
+
 func resolveImportRoot() (string, error) {
 	if raw := strings.TrimSpace(cityFlag); raw != "" {
 		return validateImportRootPath(raw)
@@ -231,15 +251,139 @@ func findPackRoot(dir string) (string, error) {
 	return "", fmt.Errorf("could not find city or pack root from %s", dir)
 }
 
+type importScopeState struct {
+	imports      map[string]config.Import
+	syntheticTag string
+	save         func() error
+}
+
+func (s *importScopeState) syntheticKey(name string) string {
+	return s.syntheticTag + name
+}
+
+func loadImportScopeFS(fs fsys.FS, cityPath string) (*importScopeState, error) {
+	targetRig := strings.TrimSpace(rigFlag)
+	if targetRig == "" {
+		manifest, err := loadCityPackManifestFS(fs, cityPath)
+		if err != nil {
+			return nil, err
+		}
+		if manifest.Imports == nil {
+			manifest.Imports = make(map[string]config.Import)
+		}
+		return &importScopeState{
+			imports:      manifest.Imports,
+			syntheticTag: "pack:",
+			save: func() error {
+				return writeCityPackManifest(fs, cityPath, manifest)
+			},
+		}, nil
+	}
+
+	if _, err := fs.Stat(filepath.Join(cityPath, "city.toml")); err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("rig-scoped imports require a city directory: %s", cityPath)
+		}
+		return nil, err
+	}
+
+	cfg, err := loadCityImportManifestFS(fs, cityPath)
+	if err != nil {
+		return nil, err
+	}
+	rigIndex, rigName, err := findImportRigIndex(cityPath, cfg.Rigs, targetRig)
+	if err != nil {
+		return nil, err
+	}
+	if cfg.Rigs[rigIndex].Imports == nil {
+		cfg.Rigs[rigIndex].Imports = make(map[string]config.Import)
+	}
+	return &importScopeState{
+		imports:      cfg.Rigs[rigIndex].Imports,
+		syntheticTag: "rig:" + rigName + ":",
+		save: func() error {
+			return writeCityImportManifestFS(fs, cityPath, cfg)
+		},
+	}, nil
+}
+
+func collectAllImportsFS(fs fsys.FS, cityPath string) (map[string]config.Import, error) {
+	all := make(map[string]config.Import)
+
+	packManifest, err := loadCityPackManifestFS(fs, cityPath)
+	if err != nil {
+		return nil, err
+	}
+	for name, imp := range packManifest.Imports {
+		all["pack:"+name] = imp
+	}
+
+	if _, err := fs.Stat(filepath.Join(cityPath, "city.toml")); err != nil {
+		if os.IsNotExist(err) {
+			return all, nil
+		}
+		return nil, err
+	}
+
+	cfg, err := loadCityImportManifestFS(fs, cityPath)
+	if err != nil {
+		return nil, err
+	}
+	for _, rig := range cfg.Rigs {
+		for name, imp := range rig.Imports {
+			all["rig:"+rig.Name+":"+name] = imp
+		}
+	}
+	return all, nil
+}
+
+func loadCityImportManifestFS(fs fsys.FS, cityPath string) (*config.City, error) {
+	return config.Load(fs, filepath.Join(cityPath, "city.toml"))
+}
+
+func writeCityImportManifestFS(fs fsys.FS, cityPath string, cfg *config.City) error {
+	if cfg == nil {
+		cfg = &config.City{}
+	}
+	var buf bytes.Buffer
+	if err := toml.NewEncoder(&buf).Encode(cfg); err != nil {
+		return fmt.Errorf("encoding city.toml: %w", err)
+	}
+	return fsys.WriteFileAtomic(fs, filepath.Join(cityPath, "city.toml"), buf.Bytes(), 0o644)
+}
+
+func findImportRigIndex(cityPath string, rigs []config.Rig, target string) (int, string, error) {
+	for i, rig := range rigs {
+		if rig.Name == target {
+			return i, rig.Name, nil
+		}
+	}
+
+	resolvedRigs := append([]config.Rig(nil), rigs...)
+	resolveRigPaths(cityPath, resolvedRigs)
+
+	targetPath := target
+	if !filepath.IsAbs(targetPath) {
+		abs, err := filepath.Abs(targetPath)
+		if err == nil {
+			targetPath = abs
+		}
+	}
+	for i, rig := range resolvedRigs {
+		if samePath(rig.Path, targetPath) {
+			return i, rigs[i].Name, nil
+		}
+	}
+
+	return -1, "", fmt.Errorf("rig %q not found", target)
+}
+
 //nolint:unparam // keep fs injectable for parity with the other import helpers and direct tests.
 func doImportAdd(fs fsys.FS, cityPath, source, nameOverride, versionFlag string, stdout, stderr io.Writer) int {
-	manifest, err := loadCityPackManifestFS(fs, cityPath)
+	scope, err := loadImportScopeFS(fs, cityPath)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc import add: %v\n", err) //nolint:errcheck
 		return 1
-	}
-	if manifest.Imports == nil {
-		manifest.Imports = make(map[string]config.Import)
 	}
 
 	source, gitBacked, err := normalizeImportAddSource(fs, cityPath, source)
@@ -256,7 +400,7 @@ func doImportAdd(fs fsys.FS, cityPath, source, nameOverride, versionFlag string,
 		fmt.Fprintln(stderr, "gc import add: could not derive import name; use --name") //nolint:errcheck
 		return 1
 	}
-	if _, exists := manifest.Imports[name]; exists {
+	if _, exists := scope.imports[name]; exists {
 		fmt.Fprintf(stderr, "gc import add: import %q already exists\n", name) //nolint:errcheck
 		return 1
 	}
@@ -279,16 +423,22 @@ func doImportAdd(fs fsys.FS, cityPath, source, nameOverride, versionFlag string,
 		return 1
 	}
 
-	manifest.Imports[name] = config.Import{
+	scope.imports[name] = config.Import{
 		Source:  source,
 		Version: version,
 	}
-	lock, err := syncImports(cityPath, manifest.Imports, packman.InstallResolveIfNeeded)
+	allImports, err := collectAllImportsFS(fs, cityPath)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc import add %q: %v\n", source, err) //nolint:errcheck
 		return 1
 	}
-	if err := writeCityPackManifest(fs, cityPath, manifest); err != nil {
+	allImports[scope.syntheticKey(name)] = scope.imports[name]
+	lock, err := syncImports(cityPath, allImports, packman.InstallResolveIfNeeded)
+	if err != nil {
+		fmt.Fprintf(stderr, "gc import add %q: %v\n", source, err) //nolint:errcheck
+		return 1
+	}
+	if err := scope.save(); err != nil {
 		fmt.Fprintf(stderr, "gc import add %q: %v\n", source, err) //nolint:errcheck
 		return 1
 	}
@@ -301,23 +451,29 @@ func doImportAdd(fs fsys.FS, cityPath, source, nameOverride, versionFlag string,
 }
 
 func doImportRemove(fs fsys.FS, cityPath, name string, stdout, stderr io.Writer) int {
-	manifest, err := loadCityPackManifestFS(fs, cityPath)
+	scope, err := loadImportScopeFS(fs, cityPath)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc import remove: %v\n", err) //nolint:errcheck
 		return 1
 	}
-	if _, exists := manifest.Imports[name]; !exists {
+	if _, exists := scope.imports[name]; !exists {
 		fmt.Fprintf(stderr, "gc import remove: import %q not found\n", name) //nolint:errcheck
 		return 1
 	}
-	delete(manifest.Imports, name)
+	delete(scope.imports, name)
 
-	lock, err := syncImports(cityPath, manifest.Imports, packman.InstallResolveIfNeeded)
+	allImports, err := collectAllImportsFS(fs, cityPath)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc import remove %q: %v\n", name, err) //nolint:errcheck
 		return 1
 	}
-	if err := writeCityPackManifest(fs, cityPath, manifest); err != nil {
+	delete(allImports, scope.syntheticKey(name))
+	lock, err := syncImports(cityPath, allImports, packman.InstallResolveIfNeeded)
+	if err != nil {
+		fmt.Fprintf(stderr, "gc import remove %q: %v\n", name, err) //nolint:errcheck
+		return 1
+	}
+	if err := scope.save(); err != nil {
 		fmt.Fprintf(stderr, "gc import remove %q: %v\n", name, err) //nolint:errcheck
 		return 1
 	}
@@ -330,12 +486,12 @@ func doImportRemove(fs fsys.FS, cityPath, name string, stdout, stderr io.Writer)
 }
 
 func doImportInstall(cityPath string, stdout, stderr io.Writer) int {
-	manifest, err := loadCityPackManifestFS(fsys.OSFS{}, cityPath)
+	allImports, err := collectAllImportsFS(fsys.OSFS{}, cityPath)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc import install: %v\n", err) //nolint:errcheck
 		return 1
 	}
-	lock, err := syncImports(cityPath, manifest.Imports, packman.InstallFromLock)
+	lock, err := syncImports(cityPath, allImports, packman.InstallFromLock)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc import install: %v\n", err) //nolint:errcheck
 		return 1
@@ -355,7 +511,7 @@ func doImportInstall(cityPath string, stdout, stderr io.Writer) int {
 }
 
 func doImportUpgrade(cityPath, target string, stdout, stderr io.Writer) int {
-	manifest, err := loadCityPackManifestFS(fsys.OSFS{}, cityPath)
+	scope, err := loadImportScopeFS(fsys.OSFS{}, cityPath)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc import upgrade: %v\n", err) //nolint:errcheck
 		return 1
@@ -363,9 +519,14 @@ func doImportUpgrade(cityPath, target string, stdout, stderr io.Writer) int {
 
 	var lock *packman.Lockfile
 	if target == "" {
-		lock, err = syncImports(cityPath, manifest.Imports, packman.InstallUpgrade)
+		allImports, collectErr := collectAllImportsFS(fsys.OSFS{}, cityPath)
+		if collectErr != nil {
+			fmt.Fprintf(stderr, "gc import upgrade: %v\n", collectErr) //nolint:errcheck
+			return 1
+		}
+		lock, err = syncImports(cityPath, allImports, packman.InstallUpgrade)
 	} else {
-		targetImp, ok := manifest.Imports[target]
+		targetImp, ok := scope.imports[target]
 		if !ok {
 			fmt.Fprintf(stderr, "gc import upgrade: import %q not found\n", target) //nolint:errcheck
 			return 1
@@ -374,18 +535,17 @@ func doImportUpgrade(cityPath, target string, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stderr, "gc import upgrade: import %q is a path import and cannot be upgraded\n", target) //nolint:errcheck
 			return 1
 		}
-		upgraded, err := syncImports(cityPath, map[string]config.Import{target: targetImp}, packman.InstallUpgrade)
+		upgraded, err := syncImports(cityPath, map[string]config.Import{scope.syntheticKey(target): targetImp}, packman.InstallUpgrade)
 		if err != nil {
 			fmt.Fprintf(stderr, "gc import upgrade %q: %v\n", target, err) //nolint:errcheck
 			return 1
 		}
-		remaining := make(map[string]config.Import)
-		for name, imp := range manifest.Imports {
-			if name == target {
-				continue
-			}
-			remaining[name] = imp
+		remaining, collectErr := collectAllImportsFS(fsys.OSFS{}, cityPath)
+		if collectErr != nil {
+			fmt.Fprintf(stderr, "gc import upgrade %q: %v\n", target, collectErr) //nolint:errcheck
+			return 1
 		}
+		delete(remaining, scope.syntheticKey(target))
 		preserved, err := syncImports(cityPath, remaining, packman.InstallResolveIfNeeded)
 		if err != nil {
 			fmt.Fprintf(stderr, "gc import upgrade %q: %v\n", target, err) //nolint:errcheck
@@ -416,7 +576,7 @@ func doImportUpgrade(cityPath, target string, stdout, stderr io.Writer) int {
 }
 
 func doImportList(cityPath string, tree bool, stdout, stderr io.Writer) int {
-	manifest, err := loadCityPackManifestFS(fsys.OSFS{}, cityPath)
+	scope, err := loadImportScopeFS(fsys.OSFS{}, cityPath)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc import list: %v\n", err) //nolint:errcheck
 		return 1
@@ -427,20 +587,34 @@ func doImportList(cityPath string, tree bool, stdout, stderr io.Writer) int {
 		return 1
 	}
 	var directNames []string
-	for name := range manifest.Imports {
+	for name := range scope.imports {
 		directNames = append(directNames, name)
 	}
 	sort.Strings(directNames)
 	if tree {
-		if err := writeImportTree(stdout, manifest.Imports, lock); err != nil {
+		if err := writeImportTree(stdout, scope.imports, lock); err != nil {
 			fmt.Fprintf(stderr, "gc import list: %v\n", err) //nolint:errcheck
 			return 1
 		}
 		return 0
 	}
+
+	allImports, err := collectAllImportsFS(fsys.OSFS{}, cityPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "gc import list: %v\n", err) //nolint:errcheck
+		return 1
+	}
+	allowLockOnlyFallback := len(allImports) == len(scope.imports)
+
+	graph, graphErr := buildImportGraph(scope.imports, lock)
+	if graphErr != nil && !allowLockOnlyFallback {
+		fmt.Fprintf(stderr, "gc import list: %v\n", graphErr) //nolint:errcheck
+		return 1
+	}
+
 	directSources := make(map[string]bool)
 	for _, name := range directNames {
-		imp := manifest.Imports[name]
+		imp := scope.imports[name]
 		if !isRemoteImportSource(imp.Source) {
 			fmt.Fprintf(stdout, "%s\t%s\t%s\t%s\n", name, imp.Source, imp.Version, "(path)") //nolint:errcheck
 			continue
@@ -454,16 +628,51 @@ func doImportList(cityPath string, tree bool, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "%s\t%s\t%s\t%s\n", name, imp.Source, imp.Version, pack.Version) //nolint:errcheck
 	}
 
-	var transitiveSources []string
-	for source := range lock.Packs {
-		if !directSources[source] {
-			transitiveSources = append(transitiveSources, source)
+	transitive := collectTransitiveImports(graph, directSources)
+	if len(transitive) == 0 && allowLockOnlyFallback {
+		for source, pack := range lock.Packs {
+			if !directSources[source] {
+				transitive[source] = pack
+			}
 		}
+	}
+	transitiveSources := make([]string, 0, len(transitive))
+	for source := range transitive {
+		transitiveSources = append(transitiveSources, source)
 	}
 	sort.Strings(transitiveSources)
 	for _, source := range transitiveSources {
-		pack := lock.Packs[source]
+		pack := transitive[source]
 		fmt.Fprintf(stdout, "(transitive)\t%s\t\t%s\n", source, pack.Version) //nolint:errcheck
+	}
+	return 0
+}
+
+func doImportWhy(cityPath, target string, stdout, stderr io.Writer) int {
+	scope, err := loadImportScopeFS(fsys.OSFS{}, cityPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "gc import why: %v\n", err) //nolint:errcheck
+		return 1
+	}
+	lock, err := readImportLockfile(fsys.OSFS{}, cityPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "gc import why: %v\n", err) //nolint:errcheck
+		return 1
+	}
+	graph, err := buildImportGraph(scope.imports, lock)
+	if err != nil {
+		fmt.Fprintf(stderr, "gc import why: %v\n", err) //nolint:errcheck
+		return 1
+	}
+
+	matches, err := findImportWhyMatches(graph, target)
+	if err != nil {
+		fmt.Fprintf(stderr, "gc import why: %v\n", err) //nolint:errcheck
+		return 1
+	}
+	if err := writeImportWhy(stdout, target, matches); err != nil {
+		fmt.Fprintf(stderr, "gc import why: %v\n", err) //nolint:errcheck
+		return 1
 	}
 	return 0
 }
@@ -532,6 +741,205 @@ func writeImportTreeNode(stdout io.Writer, name string, imp config.Import, lock 
 	line += fmt.Sprintf(" (path) - %s", imp.Source)
 	_, err := fmt.Fprintln(stdout, prefix+line)
 	return err
+}
+
+type importGraphNode struct {
+	Name       string
+	Import     config.Import
+	Resolved   packman.LockedPack
+	HasLock    bool
+	Children   []*importGraphNode
+	directRoot bool
+}
+
+func buildImportGraph(imports map[string]config.Import, lock *packman.Lockfile) ([]*importGraphNode, error) {
+	names := make([]string, 0, len(imports))
+	for name := range imports {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	nodes := make([]*importGraphNode, 0, len(names))
+	for _, name := range names {
+		node, err := buildImportGraphNode(name, imports[name], lock, map[string]bool{}, true)
+		if err != nil {
+			return nil, err
+		}
+		nodes = append(nodes, node)
+	}
+	return nodes, nil
+}
+
+func buildImportGraphNode(name string, imp config.Import, lock *packman.Lockfile, stack map[string]bool, direct bool) (*importGraphNode, error) {
+	node := &importGraphNode{
+		Name:       name,
+		Import:     imp,
+		directRoot: direct,
+	}
+	if !isRemoteImportSource(imp.Source) {
+		return node, nil
+	}
+	pack, ok := lock.Packs[imp.Source]
+	if !ok {
+		return node, nil
+	}
+	node.Resolved = pack
+	node.HasLock = true
+	if !imp.ImportIsTransitive() || stack[imp.Source] {
+		return node, nil
+	}
+
+	children, err := packman.ReadCachedPackImports(imp.Source, pack.Commit)
+	if err != nil {
+		return nil, err
+	}
+	childNames := make([]string, 0, len(children))
+	for childName := range children {
+		childNames = append(childNames, childName)
+	}
+	sort.Strings(childNames)
+
+	nextStack := make(map[string]bool, len(stack)+1)
+	for key, value := range stack {
+		nextStack[key] = value
+	}
+	nextStack[imp.Source] = true
+
+	node.Children = make([]*importGraphNode, 0, len(childNames))
+	for _, childName := range childNames {
+		child, err := buildImportGraphNode(childName, children[childName], lock, nextStack, false)
+		if err != nil {
+			return nil, err
+		}
+		node.Children = append(node.Children, child)
+	}
+	return node, nil
+}
+
+func collectTransitiveImports(nodes []*importGraphNode, directSources map[string]bool) map[string]packman.LockedPack {
+	transitive := make(map[string]packman.LockedPack)
+	var walk func(node *importGraphNode)
+	walk = func(node *importGraphNode) {
+		if node == nil {
+			return
+		}
+		if node.HasLock && !directSources[node.Import.Source] {
+			transitive[node.Import.Source] = node.Resolved
+		}
+		for _, child := range node.Children {
+			walk(child)
+		}
+	}
+	for _, node := range nodes {
+		for _, child := range node.Children {
+			walk(child)
+		}
+	}
+	return transitive
+}
+
+func findImportWhyMatches(nodes []*importGraphNode, target string) ([][]*importGraphNode, error) {
+	var sourceMatches [][]*importGraphNode
+	var nameMatches [][]*importGraphNode
+	var walk func(node *importGraphNode, path []*importGraphNode)
+	walk = func(node *importGraphNode, path []*importGraphNode) {
+		if node == nil {
+			return
+		}
+		path = append(path, node)
+		if node.Import.Source == target {
+			sourceMatches = append(sourceMatches, append([]*importGraphNode(nil), path...))
+		}
+		if node.Name == target {
+			nameMatches = append(nameMatches, append([]*importGraphNode(nil), path...))
+		}
+		for _, child := range node.Children {
+			walk(child, path)
+		}
+	}
+	for _, node := range nodes {
+		walk(node, nil)
+	}
+
+	if len(sourceMatches) > 0 {
+		return sourceMatches, nil
+	}
+	if len(nameMatches) == 0 {
+		return nil, fmt.Errorf("import %q not found", target)
+	}
+
+	sources := make(map[string]bool)
+	for _, path := range nameMatches {
+		last := path[len(path)-1]
+		sources[last.Import.Source] = true
+	}
+	if len(sources) > 1 {
+		options := make([]string, 0, len(sources))
+		for source := range sources {
+			options = append(options, source)
+		}
+		sort.Strings(options)
+		return nil, fmt.Errorf("import %q is ambiguous; use one of: %s", target, strings.Join(options, ", "))
+	}
+
+	return nameMatches, nil
+}
+
+func writeImportWhy(stdout io.Writer, target string, matches [][]*importGraphNode) error {
+	if len(matches) == 0 {
+		return fmt.Errorf("no matches")
+	}
+	primary := matches[0][len(matches[0])-1]
+	label := target
+	if primary.Name != "" && target == primary.Import.Source {
+		label = primary.Import.Source
+	} else if primary.Name != "" {
+		label = primary.Name
+	}
+
+	direct := false
+	for _, path := range matches {
+		if len(path) == 1 {
+			direct = true
+			break
+		}
+	}
+
+	if direct {
+		if _, err := fmt.Fprintf(stdout, "%s is a direct import\n", label); err != nil {
+			return err
+		}
+	} else {
+		if _, err := fmt.Fprintf(stdout, "%s is present transitively\n", label); err != nil {
+			return err
+		}
+	}
+	if _, err := fmt.Fprintf(stdout, "source: %s\n", primary.Import.Source); err != nil {
+		return err
+	}
+	if primary.Import.Version != "" {
+		if _, err := fmt.Fprintf(stdout, "constraint: %s\n", primary.Import.Version); err != nil {
+			return err
+		}
+	}
+	if primary.HasLock {
+		if _, err := fmt.Fprintf(stdout, "resolved: %s\n", primary.Resolved.Version); err != nil {
+			return err
+		}
+	}
+	for _, path := range matches {
+		if len(path) <= 1 {
+			continue
+		}
+		names := make([]string, 0, len(path))
+		for _, node := range path {
+			names = append(names, node.Name)
+		}
+		if _, err := fmt.Fprintf(stdout, "via: %s\n", strings.Join(names, " -> ")); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func loadCityPackManifestFS(fs fsys.FS, cityPath string) (*cityPackManifest, error) {

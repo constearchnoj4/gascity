@@ -66,6 +66,19 @@ func Revision(fs fsys.FS, prov *Provenance, cfg *City, cityRoot string) string {
 		h.Write([]byte{0})                  //nolint:errcheck // hash.Write never errors
 	}
 
+	// Remote PackV2 imports resolve through packs.lock, so lockfile changes
+	// can change the effective config even when city.toml/pack.toml stay
+	// untouched.
+	if tracksPackV2Imports(cfg) {
+		lockPath := filepath.Join(cityRoot, "packs.lock")
+		if data, err := fs.ReadFile(lockPath); err == nil {
+			h.Write([]byte(lockPath)) //nolint:errcheck // hash.Write never errors
+			h.Write([]byte{0})        //nolint:errcheck // hash.Write never errors
+			h.Write(data)             //nolint:errcheck // hash.Write never errors
+			h.Write([]byte{0})        //nolint:errcheck // hash.Write never errors
+		}
+	}
+
 	// Hash v2-resolved pack directories (populated by ExpandPacks from
 	// [imports.X] and [rigs.imports.X]). Without this, editing a file in
 	// an imported pack does not change the revision, so the reconciler
@@ -215,6 +228,24 @@ func revisionPackDir(ref, declDir, cityRoot string) (string, bool) {
 		return "", false
 	}
 	return dir, true
+}
+
+func tracksPackV2Imports(cfg *City) bool {
+	if cfg == nil {
+		return false
+	}
+	if len(cfg.Imports) > 0 || len(cfg.PackDirs) > 0 || len(cfg.ExplicitImportPackDirs) > 0 {
+		return true
+	}
+	if len(cfg.RigPackDirs) > 0 || len(cfg.RigImportPackDirs) > 0 {
+		return true
+	}
+	for _, rig := range cfg.Rigs {
+		if len(rig.Imports) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // WatchDirs returns the deduplicated paths from WatchTargets. It is retained

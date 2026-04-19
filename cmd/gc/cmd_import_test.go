@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -308,8 +309,15 @@ version = "^1.4"
 		if mode != packman.InstallFromLock {
 			t.Fatalf("mode = %v, want InstallFromLock", mode)
 		}
-		if _, ok := imports["tools"]; !ok {
-			t.Fatalf("imports = %#v, want tools import", imports)
+		found := false
+		for _, imp := range imports {
+			if imp.Source == "https://example.com/tools.git" {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("imports = %#v, want tools source present", imports)
 		}
 		return &packman.Lockfile{
 			Schema: packman.LockfileSchema,
@@ -625,6 +633,302 @@ source = "../packs/local"
 	}
 	if !strings.Contains(stdout.String(), "local (path) - ../packs/local") {
 		t.Fatalf("unexpected tree output:\n%s", stdout.String())
+	}
+}
+
+func TestDoImportAddWritesRigScopedImportToCityToml(t *testing.T) {
+	clearGCEnv(t)
+	dir := t.TempDir()
+	localPack := filepath.Join(dir, "packs", "local")
+	if err := os.MkdirAll(localPack, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writePackToml(t, localPack, "[pack]\nname = \"local\"\nschema = 1\n")
+	writeCityToml(t, dir, `
+[workspace]
+name = "demo"
+
+[[rigs]]
+name = "frontend"
+path = "./frontend"
+`)
+	writePackToml(t, dir, `
+[pack]
+name = "demo"
+schema = 1
+
+[imports.shared]
+source = "https://example.com/shared.git"
+version = "^1.0"
+`)
+
+	prevRigFlag := rigFlag
+	prevSync := syncImports
+	rigFlag = "frontend"
+	t.Cleanup(func() {
+		rigFlag = prevRigFlag
+		syncImports = prevSync
+	})
+
+	var syncedSources []string
+	syncImports = func(_ string, imports map[string]config.Import, _ packman.InstallMode) (*packman.Lockfile, error) {
+		for _, imp := range imports {
+			syncedSources = append(syncedSources, imp.Source)
+		}
+		sort.Strings(syncedSources)
+		return &packman.Lockfile{Schema: packman.LockfileSchema, Packs: map[string]packman.LockedPack{}}, nil
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := doImportAdd(fsys.OSFS{}, dir, "./packs/local", "", "", &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("code = %d, stderr = %s", code, stderr.String())
+	}
+
+	cfg, err := config.Load(fsys.OSFS{}, filepath.Join(dir, "city.toml"))
+	if err != nil {
+		t.Fatalf("Load(city.toml): %v", err)
+	}
+	if len(cfg.Rigs) != 1 {
+		t.Fatalf("len(Rigs) = %d, want 1", len(cfg.Rigs))
+	}
+	if _, ok := cfg.Rigs[0].Imports["local"]; !ok {
+		t.Fatalf("rig imports = %#v, want local", cfg.Rigs[0].Imports)
+	}
+
+	packCfg, err := config.Load(fsys.OSFS{}, filepath.Join(dir, "pack.toml"))
+	if err != nil {
+		t.Fatalf("Load(pack.toml): %v", err)
+	}
+	if _, ok := packCfg.Imports["shared"]; !ok {
+		t.Fatalf("pack imports = %#v, want shared", packCfg.Imports)
+	}
+	if _, ok := packCfg.Imports["local"]; ok {
+		t.Fatalf("pack imports = %#v, local import should remain rig-scoped", packCfg.Imports)
+	}
+
+	wantSources := []string{"./packs/local", "https://example.com/shared.git"}
+	if strings.Join(syncedSources, ",") != strings.Join(wantSources, ",") {
+		t.Fatalf("synced sources = %v, want %v", syncedSources, wantSources)
+	}
+}
+
+func TestDoImportRemoveDeletesRigScopedImportOnlyFromCityToml(t *testing.T) {
+	clearGCEnv(t)
+	dir := t.TempDir()
+	writeCityToml(t, dir, `
+[workspace]
+name = "demo"
+
+[[rigs]]
+name = "frontend"
+path = "./frontend"
+
+[rigs.imports.sidecar]
+source = "https://example.com/sidecar.git"
+version = "^2.0"
+`)
+	writePackToml(t, dir, `
+[pack]
+name = "demo"
+schema = 1
+
+[imports.shared]
+source = "https://example.com/shared.git"
+version = "^1.0"
+`)
+
+	prevRigFlag := rigFlag
+	prevSync := syncImports
+	rigFlag = "frontend"
+	t.Cleanup(func() {
+		rigFlag = prevRigFlag
+		syncImports = prevSync
+	})
+
+	var syncedSources []string
+	syncImports = func(_ string, imports map[string]config.Import, _ packman.InstallMode) (*packman.Lockfile, error) {
+		for _, imp := range imports {
+			syncedSources = append(syncedSources, imp.Source)
+		}
+		sort.Strings(syncedSources)
+		return &packman.Lockfile{Schema: packman.LockfileSchema, Packs: map[string]packman.LockedPack{}}, nil
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := doImportRemove(fsys.OSFS{}, dir, "sidecar", &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("code = %d, stderr = %s", code, stderr.String())
+	}
+
+	cfg, err := config.Load(fsys.OSFS{}, filepath.Join(dir, "city.toml"))
+	if err != nil {
+		t.Fatalf("Load(city.toml): %v", err)
+	}
+	if _, ok := cfg.Rigs[0].Imports["sidecar"]; ok {
+		t.Fatalf("rig imports = %#v, want sidecar removed", cfg.Rigs[0].Imports)
+	}
+
+	packCfg, err := config.Load(fsys.OSFS{}, filepath.Join(dir, "pack.toml"))
+	if err != nil {
+		t.Fatalf("Load(pack.toml): %v", err)
+	}
+	if _, ok := packCfg.Imports["shared"]; !ok {
+		t.Fatalf("pack imports = %#v, want shared preserved", packCfg.Imports)
+	}
+
+	wantSources := []string{"https://example.com/shared.git"}
+	if strings.Join(syncedSources, ",") != strings.Join(wantSources, ",") {
+		t.Fatalf("synced sources = %v, want %v", syncedSources, wantSources)
+	}
+}
+
+func TestDoImportListWithRigShowsOnlyRigScopedClosure(t *testing.T) {
+	clearGCEnv(t)
+	dir := t.TempDir()
+	home := filepath.Join(dir, "home")
+	t.Setenv("HOME", home)
+
+	writeCityToml(t, dir, `
+[workspace]
+name = "demo"
+
+[[rigs]]
+name = "frontend"
+path = "./frontend"
+
+[rigs.imports.sidecar]
+source = "https://example.com/sidecar.git"
+version = "^2.0"
+`)
+	writePackToml(t, dir, `
+[pack]
+name = "demo"
+schema = 1
+
+[imports.tools]
+source = "https://example.com/tools.git"
+version = "^1.4"
+`)
+	if err := packman.WriteLockfile(fsys.OSFS{}, dir, &packman.Lockfile{
+		Schema: packman.LockfileSchema,
+		Packs: map[string]packman.LockedPack{
+			"https://example.com/sidecar.git": {Version: "2.1.0", Commit: "sidecar"},
+			"https://example.com/helper.git":  {Version: "0.9.0", Commit: "helper"},
+			"https://example.com/tools.git":   {Version: "1.4.2", Commit: "tools"},
+			"https://example.com/base.git":    {Version: "3.0.0", Commit: "base"},
+		},
+	}); err != nil {
+		t.Fatalf("WriteLockfile: %v", err)
+	}
+	stageCmdCachedPack(t, "https://example.com/sidecar.git", "sidecar", `
+[pack]
+name = "sidecar"
+schema = 1
+
+[imports.helper]
+source = "https://example.com/helper.git"
+version = "^0.9"
+`)
+	stageCmdCachedPack(t, "https://example.com/helper.git", "helper", `
+[pack]
+name = "helper"
+schema = 1
+`)
+	stageCmdCachedPack(t, "https://example.com/tools.git", "tools", `
+[pack]
+name = "tools"
+schema = 1
+
+[imports.base]
+source = "https://example.com/base.git"
+version = "^3.0"
+`)
+	stageCmdCachedPack(t, "https://example.com/base.git", "base", `
+[pack]
+name = "base"
+schema = 1
+`)
+
+	prevRigFlag := rigFlag
+	rigFlag = "frontend"
+	t.Cleanup(func() { rigFlag = prevRigFlag })
+
+	var stdout, stderr bytes.Buffer
+	code := doImportList(dir, false, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("code = %d, stderr = %s", code, stderr.String())
+	}
+	out := stdout.String()
+	for _, want := range []string{
+		"sidecar\thttps://example.com/sidecar.git\t^2.0\t2.1.0",
+		"(transitive)\thttps://example.com/helper.git\t\t0.9.0",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %q in output:\n%s", want, out)
+		}
+	}
+	for _, unwanted := range []string{"tools\t", "https://example.com/base.git"} {
+		if strings.Contains(out, unwanted) {
+			t.Fatalf("output should stay scoped to rig imports, got:\n%s", out)
+		}
+	}
+}
+
+func TestDoImportWhyExplainsTransitiveImport(t *testing.T) {
+	clearGCEnv(t)
+	dir := t.TempDir()
+	home := filepath.Join(dir, "home")
+	t.Setenv("HOME", home)
+
+	writeCityToml(t, dir, "[workspace]\nname = \"demo\"\n")
+	writePackToml(t, dir, `
+[pack]
+name = "demo"
+schema = 1
+
+[imports.tools]
+source = "https://example.com/tools.git"
+version = "^1.4"
+`)
+	if err := packman.WriteLockfile(fsys.OSFS{}, dir, &packman.Lockfile{
+		Schema: packman.LockfileSchema,
+		Packs: map[string]packman.LockedPack{
+			"https://example.com/tools.git": {Version: "1.4.2", Commit: "tools"},
+			"https://example.com/base.git":  {Version: "2.0.0", Commit: "base"},
+		},
+	}); err != nil {
+		t.Fatalf("WriteLockfile: %v", err)
+	}
+	stageCmdCachedPack(t, "https://example.com/tools.git", "tools", `
+[pack]
+name = "tools"
+schema = 1
+
+[imports.base]
+source = "https://example.com/base.git"
+version = "^2.0"
+`)
+	stageCmdCachedPack(t, "https://example.com/base.git", "base", `
+[pack]
+name = "base"
+schema = 1
+`)
+
+	var stdout, stderr bytes.Buffer
+	code := doImportWhy(dir, "base", &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("code = %d, stderr = %s", code, stderr.String())
+	}
+	out := stdout.String()
+	for _, want := range []string{
+		"base is present transitively",
+		"source: https://example.com/base.git",
+		"via: tools -> base",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %q in output:\n%s", want, out)
+		}
 	}
 }
 
