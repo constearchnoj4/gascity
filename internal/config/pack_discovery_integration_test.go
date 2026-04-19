@@ -1040,7 +1040,7 @@ source = "../a"
 	}
 }
 
-func TestLoadWithIncludes_ImplicitImportsComposeCommandsAndDoctors(t *testing.T) {
+func TestLoadWithIncludes_LegacyImplicitImportsDoNotComposeCommandsAndDoctors(t *testing.T) {
 	gcHome := t.TempDir()
 	t.Setenv("GC_HOME", gcHome)
 
@@ -1077,27 +1077,15 @@ name = "test-city"
 		t.Fatalf("LoadWithIncludes: %v", err)
 	}
 
-	if got := prov.Imports["ops"]; got != "(implicit)" {
-		t.Fatalf("prov.Imports[ops] = %q, want %q", got, "(implicit)")
+	if got, ok := prov.Imports["ops"]; ok {
+		t.Fatalf("prov.Imports[ops] unexpectedly present: %q", got)
 	}
 
-	if len(cfg.PackCommands) != 1 {
-		t.Fatalf("got %d PackCommands, want 1", len(cfg.PackCommands))
-	}
-	if !reflect.DeepEqual(cfg.PackCommands[0].Command, []string{"list"}) {
-		t.Fatalf("command words = %#v, want %#v", cfg.PackCommands[0].Command, []string{"list"})
-	}
-	if cfg.PackCommands[0].BindingName != "ops" {
-		t.Fatalf("command BindingName = %q, want %q", cfg.PackCommands[0].BindingName, "ops")
+	if len(cfg.PackCommands) != 0 {
+		t.Fatalf("got %d PackCommands, want 0", len(cfg.PackCommands))
 	}
 
-	if len(cfg.PackDoctors) != 1 {
-		t.Fatalf("got %d PackDoctors, want 1", len(cfg.PackDoctors))
-	}
-	if cfg.PackDoctors[0].Name != "cache" {
-		t.Fatalf("doctor Name = %q, want %q", cfg.PackDoctors[0].Name, "cache")
-	}
-	if cfg.PackDoctors[0].BindingName != "ops" {
-		t.Fatalf("doctor BindingName = %q, want %q", cfg.PackDoctors[0].BindingName, "ops")
+	if len(cfg.PackDoctors) != 0 {
+		t.Fatalf("got %d PackDoctors, want 0", len(cfg.PackDoctors))
 	}
 }

@@ -236,7 +236,7 @@ func TestFinalizeInitFetchesRemotePacksBeforeProviderReadiness(t *testing.T) {
 	}
 }
 
-func TestFinalizeInitBootstrapsImplicitImports(t *testing.T) {
+func TestFinalizeInitDoesNotBootstrapImplicitImports(t *testing.T) {
 	t.Setenv("GC_BEADS", "file")
 	t.Setenv("GC_DOLT", "skip")
 	configureIsolatedRuntimeEnv(t)
@@ -269,20 +269,12 @@ func TestFinalizeInitBootstrapsImplicitImports(t *testing.T) {
 	}
 
 	implicitPath := filepath.Join(os.Getenv("GC_HOME"), "implicit-import.toml")
-	data, err := os.ReadFile(implicitPath)
-	if err != nil {
-		t.Fatalf("reading implicit-import.toml: %v", err)
-	}
-	text := string(data)
-	if !strings.Contains(text, `[imports."registry"]`) {
-		t.Fatalf("implicit-import.toml missing registry entry:\n%s", text)
-	}
-	if !strings.Contains(text, `source = "github.com/gastownhall/gc-registry"`) {
-		t.Fatalf("implicit-import.toml missing registry source:\n%s", text)
+	if _, err := os.Stat(implicitPath); !os.IsNotExist(err) {
+		t.Fatalf("implicit-import bootstrap file should not be written during init, stat err = %v", err)
 	}
 }
 
-func TestFinalizeInitReportsBootstrapFailure(t *testing.T) {
+func TestFinalizeInitIgnoresLegacyBootstrapAssetFailures(t *testing.T) {
 	t.Setenv("GC_BEADS", "file")
 	t.Setenv("GC_DOLT", "skip")
 	configureIsolatedRuntimeEnv(t)
@@ -309,11 +301,8 @@ func TestFinalizeInitReportsBootstrapFailure(t *testing.T) {
 		commandName:           "gc init",
 		skipProviderReadiness: true,
 	})
-	if code != 1 {
-		t.Fatalf("finalizeInit = %d, want 1", code)
-	}
-	if !strings.Contains(stderr.String(), "bootstrapping implicit imports") {
-		t.Fatalf("stderr = %q, want bootstrap failure message", stderr.String())
+	if code != 0 {
+		t.Fatalf("finalizeInit = %d, want 0: %s", code, stderr.String())
 	}
 }
 

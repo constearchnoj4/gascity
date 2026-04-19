@@ -62,11 +62,11 @@ func MaterializeBuiltinPacks(cityPath string) error {
 //
 // Core and maintenance are always included. Core ships the role prompts
 // referenced by implicit agents and the overlay/per-provider hook files,
-// so its content must reach PackOverlayDirs even when the user has never
-// run `gc init` (and therefore has no implicit-import.toml written to
-// $GC_HOME). When the beads provider is "bd" (the default), include bd
-// and let its own pack includes pull in dolt transitively. Gastown is
-// never auto-included — it requires an explicit workspace.includes entry.
+// so its content must reach PackOverlayDirs from the city-local
+// .gc/system/packs tree even when there is no user-global bootstrap
+// state. When the beads provider is "bd" (the default), include bd and
+// let its own pack includes pull in dolt transitively. Gastown is never
+// auto-included — it requires an explicit workspace.includes entry.
 func builtinPackIncludes(cityPath string) []string {
 	systemRoot := filepath.Join(cityPath, citylayout.SystemPacksRoot)
 

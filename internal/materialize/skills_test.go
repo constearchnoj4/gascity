@@ -209,10 +209,9 @@ func TestLoadCityCatalogCityOnly(t *testing.T) {
 }
 
 func TestLoadCityCatalogBootstrapMerge(t *testing.T) {
-	requireBootstrapNames(t, "core", "registry")
+	requireBootstrapNames(t, "core")
 	gcHome := setupBootstrapHome(t, map[string][]string{
-		"core":     {"alpha", "shared"},
-		"registry": {"reg-only"},
+		"core": {"alpha", "shared"},
 	})
 	t.Setenv("GC_HOME", gcHome)
 
@@ -233,7 +232,6 @@ func TestLoadCityCatalogBootstrapMerge(t *testing.T) {
 	want := map[string]string{
 		"alpha":     "core",
 		"shared":    "city",
-		"reg-only":  "registry",
 		"city-only": "city",
 	}
 	if !reflect.DeepEqual(got, want) {
@@ -244,9 +242,9 @@ func TestLoadCityCatalogBootstrapMerge(t *testing.T) {
 		t.Fatalf("shadowed: %+v", cat.Shadowed)
 	}
 
-	// City root + every bootstrap pack root that contributed.
-	if len(cat.OwnedRoots) < 3 {
-		t.Fatalf("want >=3 owned roots (city + 2 bootstrap), got %v", cat.OwnedRoots)
+	// City root + the bootstrap pack root that contributed.
+	if len(cat.OwnedRoots) < 2 {
+		t.Fatalf("want >=2 owned roots (city + bootstrap), got %v", cat.OwnedRoots)
 	}
 }
 

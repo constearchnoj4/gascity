@@ -2,3 +2,4 @@
 name = "core"
 version = "0.1.0"
 schema = 2
+description = "Gas City built-in reference skills (gc-work, gc-dispatch, ...). Shipped with the gc binary and materialized into each city's .gc/system/packs/core."

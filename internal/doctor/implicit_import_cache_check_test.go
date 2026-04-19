@@ -165,13 +165,13 @@ func prepareImplicitImportCacheFixture(t *testing.T) (string, config.ImplicitImp
 	if err != nil {
 		t.Fatalf("ReadImplicitImports(): %v", err)
 	}
-	imp, ok := imports["registry"]
+	imp, ok := imports["core"]
 	if !ok {
-		t.Fatal("bootstrap registry entry missing")
+		t.Fatal("bootstrap core entry missing")
 	}
 
 	canonical := config.GlobalRepoCachePath(gcHome, imp.Source, imp.Commit)
-	legacy := legacyImplicitImportCachePath(gcHome, bootstrapSource(t, "registry"), imp.Commit)
+	legacy := legacyImplicitImportCachePath(gcHome, bootstrapSource(t, "core"), imp.Commit)
 	if !hasImplicitImportPack(canonical) {
 		t.Fatalf("canonical cache %s missing", canonical)
 	}

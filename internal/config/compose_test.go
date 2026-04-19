@@ -1440,12 +1440,9 @@ name = "coder"
 	}
 }
 
-// TestLoadWithIncludes_ImplicitImportCollisionHardStops verifies that the
-// composer rejects a city whose explicit [imports.<name>] would shadow a
-// bootstrap implicit-import pack. Prior behavior was silent shadowing on
-// upgrade; v0.15.1 hard-stops with a diagnostic directing the operator to
-// rename one side.
-func TestLoadWithIncludes_ImplicitImportCollisionHardStops(t *testing.T) {
+// TestLoadWithIncludes_LegacyImplicitImportsIgnored verifies that the
+// composer no longer splices ~/.gc/implicit-import.toml into city config.
+func TestLoadWithIncludes_LegacyImplicitImportsIgnored(t *testing.T) {
 	gcHome := t.TempDir()
 	if err := os.WriteFile(filepath.Join(gcHome, "implicit-import.toml"), []byte(`
 schema = 1
@@ -1460,85 +1457,23 @@ commit = "deadbeef"
 	t.Setenv("GC_HOME", gcHome)
 
 	dir := t.TempDir()
+	packDir := filepath.Join(dir, "packs", "my-core")
+	if err := os.MkdirAll(packDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(packDir, "pack.toml"), []byte(`
+[pack]
+name = "my-core"
+schema = 1
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(dir, "city.toml"), []byte(`
 [workspace]
 name = "test"
 
-[imports.core]
-source = "github.com/me/my-core"
-version = "1.0.0"
-
-[[agent]]
-name = "mayor"
-`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	_, _, err := LoadWithIncludes(fsys.OSFS{}, filepath.Join(dir, "city.toml"))
-	if err == nil {
-		t.Fatal("LoadWithIncludes should fail on implicit-import collision")
-	}
-	msg := err.Error()
-	if !strings.Contains(msg, "shadows the bootstrap implicit import") {
-		t.Fatalf("error missing diagnostic: %v", err)
-	}
-	if !strings.Contains(msg, "core") {
-		t.Fatalf("error should name the colliding import: %v", err)
-	}
-	if !strings.Contains(msg, "rename one side") {
-		t.Fatalf("error should suggest remediation: %v", err)
-	}
-}
-
-// TestLoadWithIncludes_NoImplicitImportCollisionSucceeds verifies the
-// composer does not error when the city declares unrelated imports
-// alongside bootstrap implicit imports.
-func TestLoadWithIncludes_NoImplicitImportCollisionSucceeds(t *testing.T) {
-	gcHome := t.TempDir()
-	t.Setenv("GC_HOME", gcHome)
-
-	coreCacheDir := GlobalRepoCachePath(gcHome, "github.com/gastownhall/gc-core", "deadbeef")
-	if err := os.MkdirAll(coreCacheDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(coreCacheDir, "pack.toml"), []byte(`
-[pack]
-name = "core"
-schema = 1
-`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := os.WriteFile(filepath.Join(gcHome, "implicit-import.toml"), []byte(`
-schema = 1
-
-[imports.core]
-source = "github.com/gastownhall/gc-core"
-version = "0.1.0"
-commit = "deadbeef"
-`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	dir := t.TempDir()
-	myteamDir := filepath.Join(dir, "packs", "myteam")
-	if err := os.MkdirAll(myteamDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(myteamDir, "pack.toml"), []byte(`
-[pack]
-name = "myteam"
-schema = 1
-`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := os.WriteFile(filepath.Join(dir, "city.toml"), []byte(`
-[workspace]
-name = "test"
-
-[imports.myteam]
-source = "./packs/myteam"
+[imports.my-core]
+source = "./packs/my-core"
 
 [[agent]]
 name = "mayor"
@@ -1550,11 +1485,11 @@ name = "mayor"
 	if err != nil {
 		t.Fatalf("LoadWithIncludes: %v", err)
 	}
-	if _, ok := cfg.Imports["core"]; !ok {
-		t.Fatalf("implicit core import should still splice in when no collision: imports=%v", cfg.Imports)
+	if _, ok := cfg.Imports["core"]; ok {
+		t.Fatalf("legacy implicit import should not splice into imports: %v", cfg.Imports)
 	}
-	if _, ok := cfg.Imports["myteam"]; !ok {
-		t.Fatalf("explicit myteam import should be preserved: imports=%v", cfg.Imports)
+	if _, ok := cfg.Imports["my-core"]; !ok {
+		t.Fatalf("explicit import should be preserved: %v", cfg.Imports)
 	}
 }
 

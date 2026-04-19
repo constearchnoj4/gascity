@@ -11,7 +11,8 @@ import (
 
 const implicitImportSchema = 1
 
-// ImplicitImport describes a user-global import spliced into every city.
+// ImplicitImport describes a legacy user-global import record kept for
+// compatibility tooling that still inspects implicit-import state.
 type ImplicitImport struct {
 	Source  string `toml:"source"`
 	Version string `toml:"version"`
@@ -23,8 +24,10 @@ type implicitImportFile struct {
 	Imports map[string]ImplicitImport `toml:"imports"`
 }
 
-// ReadImplicitImports reads ~/.gc/implicit-import.toml (or $GC_HOME) and
-// returns its imports. Missing files are treated as empty.
+// ReadImplicitImports reads legacy ~/.gc/implicit-import.toml (or $GC_HOME)
+// state used by compatibility tooling such as doctor and skill catalog
+// migration. Config composition no longer splices these imports into cities.
+// Missing files are treated as empty.
 func ReadImplicitImports() (map[string]ImplicitImport, string, error) {
 	path := implicitImportPath()
 	if path == "" {
@@ -60,16 +63,15 @@ func implicitImportPath() string {
 }
 
 // ImplicitGCHome returns the user-global GC_HOME directory used to
-// resolve implicit-import bookkeeping and bootstrap pack caches.
+// resolve legacy implicit-import bookkeeping and bootstrap pack caches.
 //
 // Resolution order: GC_HOME env var → user home/.gc → tmp fallback.
 // Returns "" under `go test` to keep unit tests hermetic unless the
 // caller opts in by setting GC_HOME explicitly.
 //
 // Callers outside this package should treat the return value as
-// authoritative — every gc.tooling subsystem (bootstrap, materializer,
-// implicit imports) must agree on the same path or they will resolve
-// to different cache directories.
+// authoritative — every remaining compatibility subsystem must agree on the
+// same path or they will resolve to different cache directories.
 func ImplicitGCHome() string {
 	if v := strings.TrimSpace(os.Getenv("GC_HOME")); v != "" {
 		return v
@@ -83,19 +85,6 @@ func ImplicitGCHome() string {
 		return filepath.Join(os.TempDir(), ".gc")
 	}
 	return filepath.Join(home, ".gc")
-}
-
-func resolveImplicitImport(imp ImplicitImport) Import {
-	source := imp.Source
-	if imp.Commit != "" {
-		if home := ImplicitGCHome(); home != "" {
-			source = GlobalRepoCachePath(home, imp.Source, imp.Commit)
-		}
-	}
-	return Import{
-		Source:  source,
-		Version: imp.Version,
-	}
 }
 
 // GlobalRepoCachePath returns the user-global cache path for a source+commit pair.

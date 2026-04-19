@@ -1,4 +1,5 @@
-// Package bootstrap installs user-global bootstrap packs used by implicit imports.
+// Package bootstrap materializes legacy user-global bootstrap packs for
+// compatibility tooling that still repairs or inspects implicit-import state.
 package bootstrap
 
 import (
@@ -31,10 +32,10 @@ type Entry struct {
 	AssetDir string
 }
 
-// BootstrapPacks is the hardcoded set of implicit packs bootstrapped by gc init.
-// Built-in gc import is authoritative and is not bootstrapped as a pack.
+// BootstrapPacks is the legacy compatibility set materialized by
+// EnsureBootstrap. Launch-time city setup now relies on per-city
+// .gc/system/packs materialization instead of user-global implicit imports.
 var BootstrapPacks = []Entry{
-	{Name: "registry", Source: "github.com/gastownhall/gc-registry", Version: "0.1.0", AssetDir: "packs/registry"},
 	{Name: "core", Source: "github.com/gastownhall/gc-core", Version: "0.1.0", AssetDir: "packs/core"},
 }
 
@@ -52,6 +53,7 @@ var BootstrapPacks = []Entry{
 // source under the same name are left alone.
 var RetiredBootstrapPacks = []Entry{
 	{Name: "import", Source: "github.com/gastownhall/gc-import"},
+	{Name: "registry", Source: "github.com/gastownhall/gc-registry"},
 }
 
 type implicitImport struct {
@@ -65,25 +67,32 @@ type implicitImportFile struct {
 	Imports map[string]implicitImport `toml:"imports"`
 }
 
-// EnsureBootstrap populates the global cache and updates implicit-import.toml.
-//
-// This variant performs no city-level collision check and is retained for
-// callers that have no loaded city config (e.g., doctor reconcile paths).
-// gc init and gc import install should use EnsureBootstrapForCity to
-// surface a hard error when the city's explicit [imports.<name>] would
-// shadow a bootstrap pack.
+// PackNames returns the current list of legacy bootstrap pack names.
+func PackNames() []string {
+	names := make([]string, 0, len(BootstrapPacks))
+	for _, entry := range BootstrapPacks {
+		names = append(names, entry.Name)
+	}
+	return names
+}
+
+// EnsureBootstrap populates the global cache and updates
+// implicit-import.toml for compatibility tooling that still repairs or
+// inspects legacy implicit-import state.
 func EnsureBootstrap(gcHome string) error {
 	return EnsureBootstrapForCity(gcHome, nil)
 }
 
-// EnsureBootstrapForCity is EnsureBootstrap plus collision detection against
-// the city's explicit imports map. If any bootstrap pack name collides with
-// a user-declared [imports.<name>], it returns an error and does not write
-// the implicit-import entry for the colliding bootstrap pack.
-//
-// Pass a nil or empty userImports map to disable collision detection (the
-// historical behavior).
+// EnsureBootstrapForCity is retained for older call sites that were part of
+// the implicit-import launch path. When userImports is non-nil, the caller is
+// a city-scoped launch/bootstrap flow and the function is now a no-op:
+// launch-time system packs are materialized under .gc/system/packs instead of
+// being written to ~/.gc/implicit-import.toml. Legacy compatibility callers
+// should continue to use EnsureBootstrap, which passes nil.
 func EnsureBootstrapForCity(gcHome string, userImports map[string]config.Import) error {
+	if userImports != nil {
+		return nil
+	}
 	if strings.EqualFold(strings.TrimSpace(os.Getenv("GC_BOOTSTRAP")), "skip") {
 		return nil
 	}
@@ -118,24 +127,6 @@ func EnsureBootstrapForCity(gcHome string, userImports map[string]config.Import)
 		delete(imports, retired.Name)
 		updated = true
 	}
-
-	// Collision check across ALL bootstrap entries so the user sees every
-	// conflict in one error rather than fixing them one at a time. The
-	// spec requires gc init / gc import install to refuse writing
-	// bootstrap implicit-import entries when the loading city already
-	// declares [imports.<name>] — silent shadowing would replace the
-	// user's pack content on upgrade.
-	if collisions := CollidesWithBootstrapPack(userImports, PackNames()); len(collisions) > 0 {
-		quoted := make([]string, len(collisions))
-		for i, name := range collisions {
-			quoted[i] = fmt.Sprintf("%q", name)
-		}
-		return fmt.Errorf(
-			"gc init: cannot add implicit import(s) %s — conflicts with city's [imports.<name>] of the same name; rename one side",
-			strings.Join(quoted, ", "),
-		)
-	}
-
 	for _, entry := range BootstrapPacks {
 		commit, err := bootstrapPackRevision(entry)
 		if err != nil {

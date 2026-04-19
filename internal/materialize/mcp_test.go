@@ -320,7 +320,7 @@ scope = "city"
 	}
 }
 
-func TestEffectiveMCPForAgent_BootstrapLayerIncluded(t *testing.T) {
+func TestEffectiveMCPForAgent_LegacyBootstrapLayerIgnored(t *testing.T) {
 	gcHome := t.TempDir()
 	t.Setenv("GC_HOME", gcHome)
 
@@ -357,8 +357,8 @@ scope = "city"
 	if err != nil {
 		t.Fatalf("LoadWithIncludes: %v", err)
 	}
-	if !cfg.BootstrapImportBindings["core"] {
-		t.Fatalf("BootstrapImportBindings[core]=false, want true")
+	if cfg.BootstrapImportBindings["core"] {
+		t.Fatalf("BootstrapImportBindings[core]=true, want false")
 	}
 
 	mayor := mustFindAgent(t, cfg, "mayor")
@@ -366,12 +366,8 @@ scope = "city"
 	if err != nil {
 		t.Fatalf("EffectiveMCPForAgent: %v", err)
 	}
-	server, ok := catalog.ByName["bootstrap"]
-	if !ok {
-		t.Fatalf("missing bootstrap server in %#v", catalog.ByName)
-	}
-	if server.Layer != "bootstrap" {
-		t.Fatalf("bootstrap.Layer=%q, want bootstrap", server.Layer)
+	if _, ok := catalog.ByName["bootstrap"]; ok {
+		t.Fatalf("legacy implicit bootstrap MCP should not be projected: %#v", catalog.ByName)
 	}
 }
 
