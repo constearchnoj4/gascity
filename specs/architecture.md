@@ -145,6 +145,17 @@ schema-describes it. There is no second description of the endpoint
 anywhere — not in a router table, not in an OpenAPI YAML, not in a
 client stub.
 
+Framework-level cross-cutting wire contract (CSRF header, request-ID
+response header, per-stream status headers) does not live on
+per-endpoint struct annotations; it lives on the registration
+helpers (`cityPost`, `cityRegister`, `registerSSE`) or on a
+post-registration spec walker (`registerFrameworkHeaders`). That is
+not a second description — it is the same mechanism applied
+at one layer up, and the OpenAPI spec that results still describes
+every operation's full contract. See §3.5.2. Patterns and Huma
+quirks that inform these helpers are documented in
+[`specs/huma-usage.md`](./huma-usage.md).
+
 ### 3.2 Spec is generated, never hand-written
 
 `internal/api/openapi.json` and `docs/schema/openapi.json` are
@@ -610,9 +621,18 @@ type guard in the SPA.
 Every file-path citation in this spec is load-bearing. If you
 rename or remove a cited symbol (`events.KnownEventTypes`,
 `EventPayloadUnion`, `TestEveryKnownEventTypeHasRegisteredPayload`,
-`cmd/gc/apiroute.go:apiClient()`, etc.), **update this spec in the
+`cmd/gc/apiroute.go:apiClient()`, `addMutationCSRFParam`,
+`registerFrameworkHeaders`, `sseResponseHeaders`,
+`OptionalParam`, etc.), **update this spec in the
 same commit**. A stale spec is worse than no spec — it misleads
 future agents about what invariants hold.
+
+Framework-specific patterns and Huma quirks are captured in
+[`specs/huma-usage.md`](./huma-usage.md); update that file in the
+same commit when you touch any of: `OptionalParam`,
+`addMutationCSRFParam`, `registerFrameworkHeaders`,
+`sseResponseHeaders`, the SSE hand-writing zone, or the
+`cityPost`/`cityRegister` helper family.
 
 Line numbers are deliberately omitted so the spec survives
 refactors. Package names, type names, and test names are stable
