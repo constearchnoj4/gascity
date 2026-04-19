@@ -1,14 +1,12 @@
 package api
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -16,7 +14,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
-	"github.com/gastownhall/gascity/internal/config"
+	"github.com/gastownhall/gascity/internal/cityinit"
 	"github.com/gastownhall/gascity/internal/events"
 )
 
@@ -114,12 +112,6 @@ type SupervisorEventStreamInput struct {
 	LastEventID string `header:"Last-Event-ID" required:"false" doc:"Reconnect cursor (composite per-city cursor)."`
 	AfterCursor string `query:"after_cursor" required:"false" doc:"Alternative to Last-Event-ID for browsers that can't set custom headers."`
 }
-
-// cityInitExitAlreadyInitialized mirrors initExitAlreadyInitialized in
-// cmd/gc/cmd_init.go. Duplicated here because the CLI's exit-code
-// constant is declared in the main package and not importable; the two
-// must stay in sync. TestCityInitExitCodeInSync enforces that.
-const cityInitExitAlreadyInitialized = 2
 
 // --- Huma API setup ---
 
@@ -273,15 +265,15 @@ func (sm *SupervisorMux) humaHandleProviderReadiness(ctx context.Context, input 
 	return out, nil
 }
 
-// humaHandleCityCreate handles POST /v0/city — create a new city by
-// shelling out to `gc init`. Stateless; does not require a running city.
+// humaHandleCityCreate handles POST /v0/city. Calls the injected
+// cityinit.Initializer in-process — no subprocess, no arbitrary
+// timeout, no stderr-scraping. Typed errors from the domain layer
+// map directly to HTTP status codes. See specs/architecture.md §1–§2
+// on the "object model at the center; CLI and HTTP API are
+// projections over it" principle.
 func (sm *SupervisorMux) humaHandleCityCreate(ctx context.Context, input *SupervisorCityCreateInput) (*SupervisorCityCreateOutput, error) {
-	// Dir/Provider emptiness is enforced by minLength:"1" tags on cityCreateRequest.
-	// BootstrapProfile membership is enforced by the enum tag.
-	// Provider membership against runtime-loaded builtins stays here —
-	// static enum can't express a runtime-loaded set.
-	if _, ok := config.BuiltinProviders()[input.Body.Provider]; !ok {
-		return nil, huma.Error422UnprocessableEntity(fmt.Sprintf("invalid: unknown provider %q", input.Body.Provider))
+	if sm.initializer == nil {
+		return nil, huma.Error501NotImplemented("city creation is not available in this supervisor (no initializer wired)")
 	}
 
 	dir := input.Body.Dir
@@ -293,43 +285,30 @@ func (sm *SupervisorMux) humaHandleCityCreate(ctx context.Context, input *Superv
 		dir = filepath.Join(home, dir)
 	}
 
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return nil, huma.Error500InternalServerError(fmt.Sprintf("internal: creating directory: %v", err))
-	}
-
-	gcBin, err := os.Executable()
-	if err != nil {
-		return nil, huma.Error500InternalServerError(fmt.Sprintf("internal: finding gc binary: %v", err))
-	}
-	args := []string{"init", dir, "--provider", input.Body.Provider}
-	if input.Body.BootstrapProfile != "" {
-		args = append(args, "--bootstrap-profile", input.Body.BootstrapProfile)
-	}
-
-	cctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(cctx, gcBin, args...)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		msg := stderr.String()
-		if msg == "" {
-			msg = err.Error()
-		}
-		// gc init exits with initExitAlreadyInitialized when the
-		// target already contains a city. Dispatch on the exit code
-		// rather than scraping stderr text.
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) && exitErr.ExitCode() == cityInitExitAlreadyInitialized {
-			return nil, huma.Error409Conflict("conflict: city already initialized at " + dir)
-		}
-		return nil, huma.Error500InternalServerError("init_failed: " + msg)
+	result, err := sm.initializer.Init(ctx, cityinit.InitRequest{
+		Dir:              dir,
+		Provider:         input.Body.Provider,
+		BootstrapProfile: input.Body.BootstrapProfile,
+		// API callers poll readiness separately via
+		// GET /v0/provider-readiness; the handler doesn't block
+		// city creation on provider auth.
+		SkipProviderReadiness: true,
+	})
+	switch {
+	case errors.Is(err, cityinit.ErrAlreadyInitialized):
+		return nil, huma.Error409Conflict("conflict: city already initialized at " + dir)
+	case errors.Is(err, cityinit.ErrInvalidProvider),
+		errors.Is(err, cityinit.ErrInvalidBootstrapProfile):
+		return nil, huma.Error422UnprocessableEntity(err.Error())
+	case errors.Is(err, cityinit.ErrMissingDependency),
+		errors.Is(err, cityinit.ErrProviderNotReady):
+		return nil, huma.Error503ServiceUnavailable(err.Error())
+	case err != nil:
+		return nil, huma.Error500InternalServerError(err.Error())
 	}
 
 	out := &SupervisorCityCreateOutput{}
-	out.Body = cityCreateResponse{OK: true, Path: dir}
+	out.Body = cityCreateResponse{OK: true, Path: result.CityPath}
 	return out, nil
 }
 

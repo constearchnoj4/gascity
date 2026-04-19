@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/gastownhall/gascity/internal/cityinit"
 	"github.com/gastownhall/gascity/internal/events"
 )
 
@@ -53,11 +54,12 @@ type cachedCityServer struct {
 // to per-city Server.mux. Workspace services own their own HTTP
 // contracts and are explicitly excluded from the typed control plane.
 type SupervisorMux struct {
-	resolver  CityResolver
-	readOnly  bool
-	version   string
-	startedAt time.Time
-	server    *http.Server
+	resolver    CityResolver
+	initializer cityinit.Initializer
+	readOnly    bool
+	version     string
+	startedAt   time.Time
+	server      *http.Server
 
 	// Single Huma API (Phase 3.5 — Topology 1). Owns every typed
 	// operation: supervisor-scope (/v0/cities, /health, /v0/readiness,
@@ -76,17 +78,21 @@ type SupervisorMux struct {
 }
 
 // NewSupervisorMux creates a SupervisorMux that routes requests to cities
-// resolved by the given CityResolver.
-func NewSupervisorMux(resolver CityResolver, readOnly bool, version string, startedAt time.Time) *SupervisorMux {
+// resolved by the given CityResolver. The initializer is invoked by the
+// POST /v0/city handler to scaffold new cities in-process; passing nil
+// is allowed for tests that don't exercise city creation (the handler
+// returns 501 Not Implemented in that case).
+func NewSupervisorMux(resolver CityResolver, initializer cityinit.Initializer, readOnly bool, version string, startedAt time.Time) *SupervisorMux {
 	humaMux := http.NewServeMux()
 	sm := &SupervisorMux{
-		resolver:  resolver,
-		readOnly:  readOnly,
-		version:   version,
-		startedAt: startedAt,
-		humaMux:   humaMux,
-		humaAPI:   newSupervisorHumaAPI(humaMux, readOnly),
-		cache:     make(map[string]cachedCityServer),
+		resolver:    resolver,
+		initializer: initializer,
+		readOnly:    readOnly,
+		version:     version,
+		startedAt:   startedAt,
+		humaMux:     humaMux,
+		humaAPI:     newSupervisorHumaAPI(humaMux, readOnly),
+		cache:       make(map[string]cachedCityServer),
 	}
 	sm.registerSupervisorRoutes()
 	sm.registerCityRoutes()
