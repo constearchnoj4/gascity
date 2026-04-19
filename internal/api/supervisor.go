@@ -90,6 +90,11 @@ func NewSupervisorMux(resolver CityResolver, readOnly bool, version string, star
 	}
 	sm.registerSupervisorRoutes()
 	sm.registerCityRoutes()
+	// Declare framework-level response headers (X-GC-Request-Id) via
+	// components.headers + $ref on every operation. Middleware writes
+	// the header at runtime; the spec describes the contract. Must run
+	// after all routes are registered.
+	registerFrameworkHeaders(sm.humaAPI)
 	// /svc/* workspace-service pass-through. This is the single remaining
 	// non-Huma registration on the supervisor — untyped by design (the
 	// proxy passes bodies through to external service processes, which

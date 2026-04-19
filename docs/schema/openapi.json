@@ -1,5 +1,14 @@
 {
   "components": {
+    "headers": {
+      "X-GC-Request-Id": {
+        "description": "Opaque per-response identifier assigned by the server for log correlation. Every response carries this header.",
+        "schema": {
+          "description": "Opaque per-response identifier assigned by the server for log correlation. Every response carries this header.",
+          "type": "string"
+        }
+      }
+    },
     "schemas": {
       "AdapterCapabilities": {
         "additionalProperties": false,
@@ -6661,7 +6670,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -6671,7 +6685,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get health"
@@ -6689,7 +6708,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -6699,7 +6723,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 cities"
@@ -6740,7 +6769,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -6750,7 +6784,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Post v0 city"
@@ -6782,7 +6821,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -6792,7 +6836,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name"
@@ -6843,7 +6892,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -6853,7 +6907,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Patch v0 city by city name"
@@ -6906,7 +6965,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -6916,7 +6980,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Delete v0 city by city name agent by base"
@@ -6965,6 +7034,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -6976,7 +7048,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name agent by base"
@@ -7037,7 +7114,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -7047,7 +7129,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Patch v0 city by city name agent by base"
@@ -7109,7 +7196,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -7119,7 +7211,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name agent by base output"
@@ -7220,7 +7317,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -7230,7 +7332,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Stream agent output in real time"
@@ -7297,7 +7404,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -7307,7 +7419,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Post v0 city by city name agent by base by action"
@@ -7370,7 +7487,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -7380,7 +7502,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Delete v0 city by city name agent by dir by base"
@@ -7439,6 +7566,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -7450,7 +7580,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name agent by dir by base"
@@ -7521,7 +7656,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -7531,7 +7671,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Patch v0 city by city name agent by dir by base"
@@ -7603,7 +7748,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -7613,7 +7763,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name agent by dir by base output"
@@ -7724,7 +7879,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -7734,7 +7894,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Stream agent output in real time (qualified name)"
@@ -7811,7 +7976,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -7821,7 +7991,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Post v0 city by city name agent by dir by base by action"
@@ -7926,6 +8101,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -7937,7 +8115,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name agents"
@@ -7988,7 +8171,12 @@
                 }
               }
             },
-            "description": "Created"
+            "description": "Created",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -7998,7 +8186,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Create an agent"
@@ -8051,7 +8244,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -8061,7 +8259,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Delete v0 city by city name bead by ID"
@@ -8110,6 +8313,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -8121,7 +8327,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name bead by ID"
@@ -8182,7 +8393,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -8192,7 +8408,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Patch v0 city by city name bead by ID"
@@ -8267,6 +8488,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -8278,7 +8502,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Post v0 city by city name bead by ID assign"
@@ -8331,7 +8560,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -8341,7 +8575,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Post v0 city by city name bead by ID close"
@@ -8392,6 +8631,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -8403,7 +8645,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name bead by ID deps"
@@ -8456,7 +8703,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -8466,7 +8718,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Post v0 city by city name bead by ID reopen"
@@ -8529,7 +8786,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -8539,7 +8801,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Post v0 city by city name bead by ID update"
@@ -8672,6 +8939,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -8683,7 +8953,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name beads"
@@ -8752,6 +9027,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -8763,7 +9041,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Create a bead"
@@ -8814,6 +9097,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -8825,7 +9111,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name beads graph by root ID"
@@ -8886,6 +9177,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -8897,7 +9191,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name beads ready"
@@ -8938,6 +9237,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -8949,7 +9251,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name config"
@@ -8990,6 +9297,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -9001,7 +9311,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name config explain"
@@ -9033,7 +9348,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -9043,7 +9363,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name config validate"
@@ -9096,7 +9421,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -9106,7 +9436,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Delete v0 city by city name convoy by ID"
@@ -9155,6 +9490,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -9166,7 +9504,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name convoy by ID"
@@ -9229,7 +9572,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -9239,7 +9587,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Post v0 city by city name convoy by ID add"
@@ -9290,6 +9643,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -9301,7 +9657,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name convoy by ID check"
@@ -9354,7 +9715,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -9364,7 +9730,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Post v0 city by city name convoy by ID close"
@@ -9427,7 +9798,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -9437,7 +9813,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Post v0 city by city name convoy by ID remove"
@@ -9520,6 +9901,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -9531,7 +9915,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name convoys"
@@ -9591,6 +9980,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -9602,7 +9994,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Create a convoy"
@@ -9715,6 +10112,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -9726,7 +10126,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name events"
@@ -9777,7 +10182,12 @@
                 }
               }
             },
-            "description": "Created"
+            "description": "Created",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -9787,7 +10197,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Emit an event"
@@ -9897,7 +10312,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -9907,7 +10327,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Stream city events in real time"
@@ -9960,7 +10385,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -9970,7 +10400,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Delete v0 city by city name extmsg adapters"
@@ -10009,6 +10444,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -10020,7 +10458,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name extmsg adapters"
@@ -10071,7 +10514,12 @@
                 }
               }
             },
-            "description": "Created"
+            "description": "Created",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -10081,7 +10529,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Register an external messaging adapter"
@@ -10134,7 +10587,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -10144,7 +10602,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Post v0 city by city name extmsg bind"
@@ -10195,6 +10658,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -10206,7 +10672,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name extmsg bindings"
@@ -10288,7 +10759,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -10298,7 +10774,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name extmsg groups"
@@ -10349,7 +10830,12 @@
                 }
               }
             },
-            "description": "Created"
+            "description": "Created",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -10359,7 +10845,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Ensure an external messaging group exists"
@@ -10412,7 +10903,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -10422,7 +10918,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Post v0 city by city name extmsg inbound"
@@ -10475,7 +10976,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -10485,7 +10991,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Post v0 city by city name extmsg outbound"
@@ -10538,7 +11049,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -10548,7 +11064,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Delete v0 city by city name extmsg participants"
@@ -10599,7 +11120,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -10609,7 +11135,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Post v0 city by city name extmsg participants"
@@ -10710,6 +11241,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -10721,7 +11255,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name extmsg transcript"
@@ -10774,7 +11313,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -10784,7 +11328,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Post v0 city by city name extmsg transcript ack"
@@ -10837,7 +11386,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -10847,7 +11401,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Post v0 city by city name extmsg unbind"
@@ -10920,7 +11479,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -10930,7 +11494,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name formula by name"
@@ -10982,7 +11551,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -10992,7 +11566,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name formulas"
@@ -11056,7 +11635,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -11066,7 +11650,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name formulas feed"
@@ -11139,7 +11728,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -11149,7 +11743,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name formulas by name"
@@ -11212,7 +11811,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -11222,7 +11826,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Post v0 city by city name formulas by name preview"
@@ -11298,7 +11907,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -11308,7 +11922,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name formulas by name runs"
@@ -11340,7 +11959,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -11350,7 +11974,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name health"
@@ -11463,6 +12092,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -11474,7 +12106,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name mail"
@@ -11543,6 +12180,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -11554,7 +12194,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Send a mail message"
@@ -11606,7 +12251,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -11616,7 +12266,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name mail count"
@@ -11677,6 +12332,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -11688,7 +12346,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name mail thread by ID"
@@ -11751,7 +12414,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -11761,7 +12429,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Delete v0 city by city name mail by ID"
@@ -11820,6 +12493,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -11831,7 +12507,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name mail by ID"
@@ -11894,7 +12575,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -11904,7 +12590,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Post v0 city by city name mail by ID archive"
@@ -11967,7 +12658,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -11977,7 +12673,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Post v0 city by city name mail by ID mark unread"
@@ -12040,7 +12741,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -12050,7 +12756,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Post v0 city by city name mail by ID read"
@@ -12132,6 +12843,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -12143,7 +12857,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Reply to a mail message"
@@ -12185,7 +12904,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -12195,7 +12919,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name order history by bead ID"
@@ -12237,7 +12966,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -12247,7 +12981,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name order by name"
@@ -12300,7 +13039,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -12310,7 +13054,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Post v0 city by city name order by name disable"
@@ -12363,7 +13112,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -12373,7 +13127,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Post v0 city by city name order by name enable"
@@ -12405,7 +13164,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -12415,7 +13179,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name orders"
@@ -12447,7 +13216,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -12457,7 +13231,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name orders check"
@@ -12521,7 +13300,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -12531,7 +13315,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name orders feed"
@@ -12595,7 +13384,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -12605,7 +13399,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name orders history"
@@ -12637,7 +13436,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -12647,7 +13451,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name packs"
@@ -12700,7 +13509,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -12710,7 +13524,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Delete v0 city by city name patches agent by base"
@@ -12759,6 +13578,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -12770,7 +13592,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name patches agent by base"
@@ -12833,7 +13660,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -12843,7 +13675,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Delete v0 city by city name patches agent by dir by base"
@@ -12902,6 +13739,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -12913,7 +13753,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name patches agent by dir by base"
@@ -12954,6 +13799,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -12965,7 +13813,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name patches agents"
@@ -13016,7 +13869,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -13026,7 +13884,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Put v0 city by city name patches agents"
@@ -13079,7 +13942,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -13089,7 +13957,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Delete v0 city by city name patches provider by name"
@@ -13138,6 +14011,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -13149,7 +14025,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name patches provider by name"
@@ -13190,6 +14071,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -13201,7 +14085,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name patches providers"
@@ -13252,7 +14141,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -13262,7 +14156,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Put v0 city by city name patches providers"
@@ -13315,7 +14214,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -13325,7 +14229,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Delete v0 city by city name patches rig by name"
@@ -13374,6 +14283,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -13385,7 +14297,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name patches rig by name"
@@ -13426,6 +14343,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -13437,7 +14357,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name patches rigs"
@@ -13488,7 +14413,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -13498,7 +14428,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Put v0 city by city name patches rigs"
@@ -13550,7 +14485,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -13560,7 +14500,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name provider readiness"
@@ -13613,7 +14558,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -13623,7 +14573,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Delete v0 city by city name provider by name"
@@ -13672,6 +14627,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -13683,7 +14641,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name provider by name"
@@ -13744,7 +14707,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -13754,7 +14722,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Patch v0 city by city name provider by name"
@@ -13795,6 +14768,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -13806,7 +14782,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name providers"
@@ -13857,7 +14838,12 @@
                 }
               }
             },
-            "description": "Created"
+            "description": "Created",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -13867,7 +14853,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Create a provider"
@@ -13908,6 +14899,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -13919,7 +14913,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name providers public"
@@ -13971,7 +14970,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -13981,7 +14985,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name readiness"
@@ -14034,7 +15043,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -14044,7 +15058,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Delete v0 city by city name rig by name"
@@ -14103,6 +15122,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -14114,7 +15136,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name rig by name"
@@ -14175,7 +15202,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -14185,7 +15217,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Patch v0 city by city name rig by name"
@@ -14248,7 +15285,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -14258,7 +15300,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Post v0 city by city name rig by name by action"
@@ -14329,6 +15376,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -14340,7 +15390,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name rigs"
@@ -14391,7 +15446,12 @@
                 }
               }
             },
-            "description": "Created"
+            "description": "Created",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -14401,7 +15461,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Create a rig"
@@ -14452,6 +15517,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -14463,7 +15531,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name service by name"
@@ -14516,7 +15589,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -14526,7 +15604,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Post v0 city by city name service by name restart"
@@ -14567,6 +15650,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -14578,7 +15664,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name services"
@@ -14639,6 +15730,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -14650,7 +15744,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name session by ID"
@@ -14720,6 +15819,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -14731,7 +15833,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Patch v0 city by city name session by ID"
@@ -14782,6 +15889,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -14793,7 +15903,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name session by ID agents"
@@ -14854,6 +15969,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -14865,7 +15983,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name session by ID agents by agent ID"
@@ -14928,7 +16051,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -14938,7 +16066,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Post v0 city by city name session by ID close"
@@ -14991,7 +16124,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -15001,7 +16139,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Post v0 city by city name session by ID kill"
@@ -15064,7 +16207,12 @@
                 }
               }
             },
-            "description": "Accepted"
+            "description": "Accepted",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -15074,7 +16222,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Send a message to a session"
@@ -15125,6 +16278,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -15136,7 +16292,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name session by ID pending"
@@ -15208,6 +16369,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -15219,7 +16383,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Post v0 city by city name session by ID rename"
@@ -15282,7 +16451,12 @@
                 }
               }
             },
-            "description": "Accepted"
+            "description": "Accepted",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -15292,7 +16466,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Respond to a pending interaction"
@@ -15345,7 +16524,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -15355,7 +16539,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Post v0 city by city name session by ID stop"
@@ -15543,7 +16732,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -15553,7 +16747,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Stream session output in real time"
@@ -15616,7 +16815,12 @@
                 }
               }
             },
-            "description": "Accepted"
+            "description": "Accepted",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -15626,7 +16830,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Submit a message to a session"
@@ -15679,7 +16888,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -15689,7 +16903,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Post v0 city by city name session by ID suspend"
@@ -15770,6 +16989,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -15781,7 +17003,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name session by ID transcript"
@@ -15834,7 +17061,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -15844,7 +17076,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Post v0 city by city name session by ID wake"
@@ -15937,6 +17174,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -15948,7 +17188,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name sessions"
@@ -15999,7 +17244,12 @@
                 }
               }
             },
-            "description": "Accepted"
+            "description": "Accepted",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -16009,7 +17259,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Create a session"
@@ -16062,7 +17317,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -16072,7 +17332,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Post v0 city by city name sling"
@@ -16133,6 +17398,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -16144,7 +17412,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name status"
@@ -16227,7 +17500,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -16237,7 +17515,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Delete v0 city by city name workflow by workflow ID"
@@ -16306,6 +17589,9 @@
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
               }
             }
           },
@@ -16317,7 +17603,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 city by city name workflow by workflow ID"
@@ -16367,7 +17658,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -16377,7 +17673,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 events"
@@ -16474,7 +17775,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -16484,7 +17790,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Stream tagged events from all running cities."
@@ -16524,7 +17835,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -16534,7 +17850,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 provider readiness"
@@ -16574,7 +17895,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           },
           "default": {
             "content": {
@@ -16584,7 +17910,12 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Error",
+            "headers": {
+              "X-GC-Request-Id": {
+                "$ref": "#/components/headers/X-GC-Request-Id"
+              }
+            }
           }
         },
         "summary": "Get v0 readiness"
