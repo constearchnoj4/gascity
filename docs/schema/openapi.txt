@@ -7319,6 +7319,13 @@
             },
             "description": "OK",
             "headers": {
+              "GC-Agent-Status": {
+                "description": "Agent runtime status at the time streaming began. Emitted as \"stopped\" when the agent is not running (the stream then serves replayed transcript from the session log).",
+                "schema": {
+                  "description": "Agent runtime status at the time streaming began. Emitted as \"stopped\" when the agent is not running (the stream then serves replayed transcript from the session log).",
+                  "type": "string"
+                }
+              },
               "X-GC-Request-Id": {
                 "$ref": "#/components/headers/X-GC-Request-Id"
               }
@@ -7881,6 +7888,13 @@
             },
             "description": "OK",
             "headers": {
+              "GC-Agent-Status": {
+                "description": "Agent runtime status at the time streaming began. Emitted as \"stopped\" when the agent is not running (the stream then serves replayed transcript from the session log).",
+                "schema": {
+                  "description": "Agent runtime status at the time streaming began. Emitted as \"stopped\" when the agent is not running (the stream then serves replayed transcript from the session log).",
+                  "type": "string"
+                }
+              },
               "X-GC-Request-Id": {
                 "$ref": "#/components/headers/X-GC-Request-Id"
               }
@@ -16734,6 +16748,20 @@
             },
             "description": "OK",
             "headers": {
+              "GC-Session-State": {
+                "description": "Session state at the time streaming began (e.g. active, closed).",
+                "schema": {
+                  "description": "Session state at the time streaming began (e.g. active, closed).",
+                  "type": "string"
+                }
+              },
+              "GC-Session-Status": {
+                "description": "Runtime status at the time streaming began. Emitted as \"stopped\" when the session's underlying process is not running.",
+                "schema": {
+                  "description": "Runtime status at the time streaming began. Emitted as \"stopped\" when the session's underlying process is not running.",
+                  "type": "string"
+                }
+              },
               "X-GC-Request-Id": {
                 "$ref": "#/components/headers/X-GC-Request-Id"
               }

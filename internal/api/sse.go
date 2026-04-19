@@ -83,6 +83,7 @@ func registerSSE[I any](
 	precheck func(context.Context, *I) error,
 	stream StreamFunc[I],
 ) {
+	normalizeSSEResponseHeaders(&op)
 	typeToEvent := attachSSEResponseSchema(api, &op, eventTypeMap, huma.TypeInteger, "The event ID.")
 
 	huma.Register(api, op, func(ctx context.Context, input *I) (*huma.StreamResponse, error) {
@@ -123,6 +124,7 @@ func registerSSEStringID[I any](
 	precheck func(context.Context, *I) error,
 	stream StringIDStreamFunc[I],
 ) {
+	normalizeSSEResponseHeaders(&op)
 	typeToEvent := attachSSEResponseSchema(api, &op, eventTypeMap, huma.TypeString, "The event ID (composite cursor).")
 
 	huma.Register(api, op, func(ctx context.Context, input *I) (*huma.StreamResponse, error) {
@@ -145,6 +147,60 @@ func registerSSEStringID[I any](
 			},
 		}, nil
 	})
+}
+
+// sseStatusHeaders is the canonical catalog of custom response headers
+// that stream handlers may emit via hctx.SetHeader. Each entry's key is
+// the wire header name; the value is its human-readable description.
+// Callers reference headers by name (see sseResponseHeaders) — the
+// description travels with the name so a reader at the registration
+// site sees only the list of headers the operation emits and each
+// description has a single source of truth.
+var sseStatusHeaders = map[string]string{
+	"GC-Agent-Status":   "Agent runtime status at the time streaming began. Emitted as \"stopped\" when the agent is not running (the stream then serves replayed transcript from the session log).",
+	"GC-Session-State":  "Session state at the time streaming began (e.g. active, closed).",
+	"GC-Session-Status": "Runtime status at the time streaming began. Emitted as \"stopped\" when the session's underlying process is not running.",
+}
+
+// sseResponseHeaders builds a Responses map declaring the named
+// custom headers on the 200 response. Names must appear in
+// sseStatusHeaders — the function panics if a caller references an
+// undeclared header, so drift between SetHeader call sites and the
+// declared contract surfaces at startup rather than in a stale spec.
+func sseResponseHeaders(names ...string) map[string]*huma.Response {
+	headers := make(map[string]*huma.Param, len(names))
+	for _, name := range names {
+		desc, ok := sseStatusHeaders[name]
+		if !ok {
+			panic("api: sse response header not in sseStatusHeaders catalog: " + name)
+		}
+		headers[name] = &huma.Param{
+			Description: desc,
+			Schema: &huma.Schema{
+				Type:        "string",
+				Description: desc,
+			},
+		}
+	}
+	return map[string]*huma.Response{
+		"200": {Headers: headers},
+	}
+}
+
+// normalizeSSEResponseHeaders ensures op.Responses["200"] exists with a
+// non-nil Headers map so the pre-declared stream-status headers (set by
+// the caller on the Operation literal) are preserved after
+// attachSSEResponseSchema rebuilds Content.
+func normalizeSSEResponseHeaders(op *huma.Operation) {
+	if op.Responses == nil {
+		op.Responses = map[string]*huma.Response{}
+	}
+	if op.Responses["200"] == nil {
+		op.Responses["200"] = &huma.Response{}
+	}
+	if op.Responses["200"].Headers == nil {
+		op.Responses["200"].Headers = map[string]*huma.Param{}
+	}
 }
 
 // attachSSEResponseSchema populates op.Responses with the text/event-stream
