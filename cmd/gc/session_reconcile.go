@@ -428,6 +428,9 @@ func computeWorkSet(cfg *config.City, runner ScaleCheckRunner, cityName, cityDir
 			defer func() { <-sem }()
 			out, err := runner(probes[idx].wq, probes[idx].dir, probes[idx].env)
 			if err != nil {
+				if stderr != nil {
+					fmt.Fprintf(stderr, "session reconcile: work_query %s: %v\n", probes[idx].qn, err) //nolint:errcheck // best-effort stderr
+				}
 				return // command failed — treat as no work
 			}
 			if workQueryHasReadyWork(strings.TrimSpace(out)) {
