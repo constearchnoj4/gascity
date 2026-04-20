@@ -116,6 +116,7 @@ var validSessionNameRe = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 var (
 	ErrNoServer           = errors.New("no tmux server running")
 	ErrSessionExists      = errors.New("session already exists")
+	ErrEnvironmentNotSet  = errors.New("tmux environment variable not set")
 	ErrSessionNotFound    = errors.New("session not found")
 	ErrInvalidSessionName = errors.New("invalid session name")
 	ErrIdleTimeout        = errors.New("agent not idle before timeout")
@@ -1270,11 +1271,15 @@ func (t *Tmux) sendHiddenAttachedKeys(target string, keys ...string) (bool, erro
 	if client == nil {
 		return false, nil
 	}
+	sequences := make([][]byte, 0, len(keys))
 	for _, key := range keys {
 		seq, ok := hiddenAttachedKeyBytes(key)
 		if !ok {
 			return false, nil
 		}
+		sequences = append(sequences, seq)
+	}
+	for _, seq := range sequences {
 		if err := client.write(seq); err != nil {
 			return true, err
 		}
@@ -2018,6 +2023,9 @@ func (t *Tmux) GetEnvironment(session, key string) (string, error) {
 	out, err := t.run("show-environment", "-t", session, key)
 	if err != nil {
 		return "", err
+	}
+	if strings.TrimSpace(out) == "-"+key {
+		return "", fmt.Errorf("%w: %s", ErrEnvironmentNotSet, key)
 	}
 	// Output format: KEY=value
 	parts := strings.SplitN(out, "=", 2)

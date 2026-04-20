@@ -282,6 +282,49 @@ func TestProviderCleanupFailedStartClearsStoredWorkDir(t *testing.T) {
 	}
 }
 
+func TestProviderStartReturnsCopyFilesStagingError(t *testing.T) {
+	workDir := t.TempDir()
+	src := filepath.Join(t.TempDir(), "note.txt")
+	if err := os.WriteFile(src, []byte("hello"), 0o644); err != nil {
+		t.Fatalf("WriteFile(src): %v", err)
+	}
+	blockingPath := filepath.Join(workDir, "blocked")
+	if err := os.WriteFile(blockingPath, []byte("not a directory"), 0o644); err != nil {
+		t.Fatalf("WriteFile(blockingPath): %v", err)
+	}
+
+	provider := NewProviderWithConfig(DefaultConfig())
+	provider.tm.exec = &fakeExecutor{err: errors.New("tmux should not be reached")}
+
+	err := provider.Start(context.Background(), "gc-test-copyfiles", runtime.Config{
+		Command:   "sleep 300",
+		WorkDir:   workDir,
+		CopyFiles: []runtime.CopyEntry{{Src: src, RelDst: filepath.Join("blocked", "note.txt")}},
+	})
+	if err == nil {
+		t.Fatal("Start should fail when CopyFiles staging fails")
+	}
+	if !strings.Contains(err.Error(), "copying file") {
+		t.Fatalf("Start error = %q, want copyfiles staging error", err)
+	}
+}
+
+func TestProviderGetMetaPropagatesUnexpectedErrors(t *testing.T) {
+	provider := &Provider{
+		tm: &Tmux{
+			exec: &fakeExecutor{err: errors.New("boom")},
+		},
+	}
+
+	_, err := provider.GetMeta("gc-test", "GC_META")
+	if err == nil {
+		t.Fatal("GetMeta should propagate unexpected tmux errors")
+	}
+	if !strings.Contains(err.Error(), "boom") {
+		t.Fatalf("GetMeta error = %q, want wrapped tmux failure", err)
+	}
+}
+
 func TestDoStartSession_FullSequence(t *testing.T) {
 	ops := &fakeStartOps{
 		hasSessionResult: true,

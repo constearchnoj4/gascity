@@ -105,7 +105,9 @@ func (p *Provider) Start(ctx context.Context, name string, cfg runtime.Config) e
 				continue
 			}
 		}
-		_ = overlay.CopyFileOrDir(cf.Src, dst, io.Discard)
+		if err := overlay.CopyFileOrDir(cf.Src, dst, io.Discard); err != nil {
+			return fmt.Errorf("copying file %s to %s: %w", cf.Src, dst, err)
+		}
 	}
 
 	err = doStartSession(ctx, &tmuxStartOps{tm: p.tm}, name, cfg, p.cfg.SetupTimeout)
@@ -404,10 +406,14 @@ func (p *Provider) SetMeta(name, key, value string) error {
 func (p *Provider) GetMeta(name, key string) (string, error) {
 	val, err := p.tm.GetEnvironment(name, key)
 	if err != nil {
-		if errors.Is(err, ErrSessionNotFound) || errors.Is(err, ErrNoServer) {
+		switch {
+		case errors.Is(err, ErrEnvironmentNotSet):
+			return "", nil
+		case errors.Is(err, ErrSessionNotFound), errors.Is(err, ErrNoServer):
+			return "", err
+		default:
 			return "", err
 		}
-		return "", nil // key not set
 	}
 	return val, nil
 }

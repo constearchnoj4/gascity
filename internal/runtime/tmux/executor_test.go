@@ -1,6 +1,7 @@
 package tmux
 
 import (
+	"bytes"
 	"context"
 	"strconv"
 	"strings"
@@ -40,6 +41,14 @@ func (f *fakeExecutor) execute(args []string) (string, error) {
 
 func (f *fakeExecutor) executeCtx(_ context.Context, args []string) (string, error) {
 	return f.execute(args)
+}
+
+type captureWriteCloser struct {
+	bytes.Buffer
+}
+
+func (c *captureWriteCloser) Close() error {
+	return nil
 }
 
 func TestNewSessionWithCommandAndEnvClearsEmptyVars(t *testing.T) {
@@ -170,6 +179,26 @@ func TestHiddenAttachedKeyBytesSupportsArrowNavigation(t *testing.T) {
 		if string(got) != want {
 			t.Fatalf("hiddenAttachedKeyBytes(%q) = %q, want %q", key, string(got), want)
 		}
+	}
+}
+
+func TestSendHiddenAttachedKeysRejectsMixedSequencesWithoutWriting(t *testing.T) {
+	stdin := &captureWriteCloser{}
+	tm := &Tmux{
+		hiddenAttachClients: map[string]*hiddenAttachClient{
+			"gc-test": {stdin: stdin},
+		},
+	}
+
+	used, err := tm.sendHiddenAttachedKeys("gc-test", "Enter", "UnsupportedKey")
+	if err != nil {
+		t.Fatalf("sendHiddenAttachedKeys error = %v, want nil", err)
+	}
+	if used {
+		t.Fatal("sendHiddenAttachedKeys should fall back for mixed supported/unsupported sequences")
+	}
+	if got := stdin.String(); got != "" {
+		t.Fatalf("sendHiddenAttachedKeys wrote %q before reporting fallback", got)
 	}
 }
 
