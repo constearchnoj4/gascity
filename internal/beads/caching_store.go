@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -34,6 +35,7 @@ type CachingStore struct {
 	stats        CacheStats
 	onChange     func(eventType, beadID string, payload json.RawMessage)
 	cancelFn     context.CancelFunc
+	problemf     func(string)
 }
 
 type cacheState int
@@ -93,6 +95,9 @@ func newCachingStore(backing Store, onChange func(eventType, beadID string, payl
 		beads:    make(map[string]Bead),
 		deps:     make(map[string][]Dep),
 		onChange: onChange,
+		problemf: func(msg string) {
+			log.Printf("beads cache: %s", msg)
+		},
 	}
 }
 
@@ -228,9 +233,13 @@ func (c *CachingStore) recordProblemLocked(op string, err error) {
 	if err == nil {
 		return
 	}
+	msg := fmt.Sprintf("%s: %v", op, err)
 	c.stats.ProblemCount++
 	c.stats.LastProblemAt = time.Now()
-	c.stats.LastProblem = fmt.Sprintf("%s: %v", op, err)
+	c.stats.LastProblem = msg
+	if c.problemf != nil {
+		c.problemf(msg)
+	}
 }
 
 func (c *CachingStore) updateStatsLocked() {

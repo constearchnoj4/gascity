@@ -207,6 +207,39 @@ func TestCachingStoreUpdateInvalidatesStaleCacheWhenRefreshFails(t *testing.T) {
 	}
 }
 
+func TestCachingStoreUpdateLogsRefreshFailure(t *testing.T) {
+	backing := &refreshFailingStore{Store: NewMemStore()}
+	bead, err := backing.Create(Bead{Title: "before"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	cache := NewCachingStoreForTest(backing, nil)
+	var logged []string
+	cache.problemf = func(msg string) {
+		logged = append(logged, msg)
+	}
+	if err := cache.Prime(context.Background()); err != nil {
+		t.Fatalf("Prime: %v", err)
+	}
+
+	title := "after"
+	backing.failNextGet = true
+	if err := cache.Update(bead.ID, UpdateOpts{Title: &title}); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	if len(logged) != 1 {
+		t.Fatalf("logged = %v, want single refresh failure", logged)
+	}
+	if !strings.Contains(logged[0], "refresh bead after update") {
+		t.Fatalf("logged[0] = %q, want refresh context", logged[0])
+	}
+	if !strings.Contains(logged[0], bead.ID) {
+		t.Fatalf("logged[0] = %q, want bead id", logged[0])
+	}
+}
+
 func TestCachingStoreDepListUpFallsThroughToBackingTruth(t *testing.T) {
 	t.Parallel()
 
