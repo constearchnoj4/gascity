@@ -221,6 +221,50 @@ func TestTraceReaderFiltersAndRecoveryIgnoresTail(t *testing.T) {
 	}
 }
 
+func TestTraceStoreReusesCurrentSegmentWithinTheSameDay(t *testing.T) {
+	cityDir := t.TempDir()
+	store, err := newSessionReconcilerTraceStore(cityDir, io.Discard)
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	defer store.Close() //nolint:errcheck
+
+	first := newTraceRecord(TraceRecordDecision)
+	first.TraceID = "cycle-a"
+	first.TickID = "trace-a"
+	first.Template = "repo/polecat"
+	first.SessionName = "polecat-1"
+	first.Ts = time.Now().UTC()
+	first.SiteCode = TraceSiteReconcilerWakeDecision
+	first.ReasonCode = TraceReasonWake
+	first.OutcomeCode = TraceOutcomeAccepted
+
+	second := newTraceRecord(TraceRecordDecision)
+	second.TraceID = "cycle-b"
+	second.TickID = "trace-b"
+	second.Template = "repo/polecat"
+	second.SessionName = "polecat-2"
+	second.Ts = first.Ts.Add(5 * time.Second)
+	second.SiteCode = TraceSiteReconcilerWakeDecision
+	second.ReasonCode = TraceReasonWake
+	second.OutcomeCode = TraceOutcomeAccepted
+
+	if err := store.AppendBatch([]SessionReconcilerTraceRecord{first}, TraceDurabilityMetadata); err != nil {
+		t.Fatalf("AppendBatch(first): %v", err)
+	}
+	if err := store.AppendBatch([]SessionReconcilerTraceRecord{second}, TraceDurabilityMetadata); err != nil {
+		t.Fatalf("AppendBatch(second): %v", err)
+	}
+
+	segments, err := filepath.Glob(filepath.Join(traceCityRuntimeDir(cityDir), sessionReconcilerTraceSegments, "*", "*", "*", "*.jsonl"))
+	if err != nil {
+		t.Fatalf("glob segments: %v", err)
+	}
+	if len(segments) != 1 {
+		t.Fatalf("segment files = %d, want 1 reused segment on the same day", len(segments))
+	}
+}
+
 func TestTraceAutoArmPromotesBufferedDetail(t *testing.T) {
 	cityDir := t.TempDir()
 	tracer := newSessionReconcilerTracer(cityDir, "trace-town", io.Discard)

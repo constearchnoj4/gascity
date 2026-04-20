@@ -26,8 +26,7 @@ type memoryIdleTracker struct {
 	timeouts map[string]time.Duration // session → idle timeout
 }
 
-// newIdleTracker creates an idle tracker. Returns nil if disabled.
-// Callers check for nil before using.
+// newIdleTracker creates an idle tracker with no registered timeouts.
 func newIdleTracker() *memoryIdleTracker {
 	return &memoryIdleTracker{
 		timeouts: make(map[string]time.Duration),

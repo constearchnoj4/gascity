@@ -38,7 +38,6 @@ type SessionReconcilerTraceStore struct {
 	rootDir        string
 	stderr         io.Writer
 	seq            uint64
-	currentDay     string
 	currentSegment int
 	currentPath    string
 	currentFile    *os.File
@@ -147,7 +146,6 @@ func (s *SessionReconcilerTraceStore) openSegment(path string, knownBytes int64,
 	}
 	s.currentFile = file
 	s.currentPath = path
-	s.currentDay = filepath.Dir(path)
 	s.currentSegment = 0
 	if name := filepath.Base(path); strings.HasPrefix(name, "segment-") && strings.HasSuffix(name, ".jsonl") {
 		if idx, err := strconv.Atoi(strings.TrimSuffix(strings.TrimPrefix(name, "segment-"), ".jsonl")); err == nil {
@@ -327,16 +325,11 @@ func (s *SessionReconcilerTraceStore) currentSegmentPath(now time.Time) (string,
 		}
 	}
 	if s.currentPath != "" {
-		curDay := filepath.Base(filepath.Dir(s.currentPath))
-		if filepath.Dir(filepath.Dir(s.currentPath)) == dayDir {
-			return s.currentPath, nil
-		}
-		if curDay == filepath.Base(dayDir) && s.currentDay == dayDir {
+		if filepath.Dir(s.currentPath) == dayDir {
 			return s.currentPath, nil
 		}
 	}
 	nextIdx := maxIdx + 1
-	s.currentDay = dayDir
 	s.currentSegment = nextIdx
 	return filepath.Join(dayDir, traceSegmentFileName(nextIdx)), nil
 }
