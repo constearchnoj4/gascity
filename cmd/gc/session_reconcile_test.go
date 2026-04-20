@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -705,6 +706,107 @@ func TestComputeWorkSet_UsesConfiguredRigRoot(t *testing.T) {
 	work := computeWorkSet(cfg, runner, "test-city", cityDir, nil, nil, nil)
 	if !work["myrig/polecat"] {
 		t.Error("expected myrig/polecat to have work when rig root is configured externally")
+	}
+}
+
+func TestComputeWorkSet_LogsProbeErrors(t *testing.T) {
+	cfg := &config.City{
+		Workspace: config.Workspace{Name: "test-city"},
+		Agents: []config.Agent{
+			{Name: "worker"},
+		},
+	}
+
+	var stderr bytes.Buffer
+	runner := func(_ string, _ string, _ map[string]string) (string, error) {
+		return "", fmt.Errorf("probe exploded")
+	}
+
+	work := computeWorkSet(cfg, runner, "test-city", "/tmp", nil, nil, &stderr)
+	if work["worker"] {
+		t.Fatal("worker should not be marked ready when work_query fails")
+	}
+	if !strings.Contains(stderr.String(), "work_query worker") {
+		t.Fatalf("stderr = %q, want work_query failure log", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "probe exploded") {
+		t.Fatalf("stderr = %q, want probe error detail", stderr.String())
+	}
+}
+
+type overlapDetectingWriter struct {
+	mu       sync.Mutex
+	active   int
+	overlap  bool
+	contents bytes.Buffer
+}
+
+func (w *overlapDetectingWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	if w.active > 0 {
+		w.overlap = true
+	}
+	w.active++
+	w.mu.Unlock()
+
+	time.Sleep(10 * time.Millisecond)
+
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.active--
+	return w.contents.Write(p)
+}
+
+func (w *overlapDetectingWriter) Overlapped() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.overlap
+}
+
+func (w *overlapDetectingWriter) String() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.contents.String()
+}
+
+func TestComputeWorkSet_LogsProbeErrorsAfterConcurrentProbesComplete(t *testing.T) {
+	cfg := &config.City{
+		Workspace: config.Workspace{Name: "test-city"},
+		Daemon:    config.DaemonConfig{ProbeConcurrency: intPtr(2)},
+		Agents: []config.Agent{
+			{Name: "worker"},
+			{Name: "reviewer"},
+		},
+	}
+
+	var stderr overlapDetectingWriter
+	started := make(chan struct{}, 2)
+	release := make(chan struct{})
+	runner := func(_ string, _ string, _ map[string]string) (string, error) {
+		started <- struct{}{}
+		<-release
+		return "", fmt.Errorf("probe exploded")
+	}
+
+	done := make(chan map[string]bool, 1)
+	go func() {
+		done <- computeWorkSet(cfg, runner, "test-city", "/tmp", nil, nil, &stderr)
+	}()
+
+	for range 2 {
+		<-started
+	}
+	close(release)
+
+	work := <-done
+	if work["worker"] || work["reviewer"] {
+		t.Fatalf("failed probes should not be marked ready: %v", work)
+	}
+	if stderr.Overlapped() {
+		t.Fatalf("stderr writes overlapped; output = %q", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "work_query worker") || !strings.Contains(stderr.String(), "work_query reviewer") {
+		t.Fatalf("stderr = %q, want both probe failure logs", stderr.String())
 	}
 }
 
