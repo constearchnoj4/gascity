@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -57,6 +58,18 @@ func setupConvergenceRuntime(t *testing.T) (*CityRuntime, *beads.MemStore) {
 	}
 
 	return cr, store
+}
+
+type failingGetStore struct {
+	*beads.MemStore
+	failID string
+}
+
+func (s *failingGetStore) Get(id string) (beads.Bead, error) {
+	if id == s.failID {
+		return beads.Bead{}, fmt.Errorf("transient lookup failure")
+	}
+	return s.MemStore.Get(id)
 }
 
 // sendAndReceive sends a convergence request via handleConvergenceRequest
@@ -252,6 +265,77 @@ func TestConvergence_TickRecoversMissingActiveWisp(t *testing.T) {
 	}
 	if _, err := store.Get(meta[convergence.FieldActiveWisp]); err != nil {
 		t.Fatalf("repaired active_wisp %q should exist: %v", meta[convergence.FieldActiveWisp], err)
+	}
+}
+
+func TestConvergence_TickLogsMetadataReadFailures(t *testing.T) {
+	cr, store := setupConvergenceRuntime(t)
+	stderr := cr.stderr.(*bytes.Buffer)
+
+	createReply := sendAndReceive(t, cr, convergenceRequest{
+		Command: "create",
+		Params: map[string]string{
+			"formula":        "test-formula",
+			"target":         "test-agent",
+			"max_iterations": "5",
+		},
+	})
+	if createReply.Error != "" {
+		t.Fatalf("create error: %s", createReply.Error)
+	}
+	var created convergence.CreateResult
+	if err := json.Unmarshal(createReply.Result, &created); err != nil {
+		t.Fatalf("unmarshaling: %v", err)
+	}
+
+	adapter := cr.convHandler.Store.(*convergenceStoreAdapter)
+	if err := adapter.populateIndex(); err != nil {
+		t.Fatalf("populateIndex: %v", err)
+	}
+
+	if err := store.Delete(created.BeadID); err != nil {
+		t.Fatalf("deleting root bead: %v", err)
+	}
+
+	cr.convergenceTick(context.Background())
+
+	if got := stderr.String(); got == "" {
+		t.Fatal("expected convergenceTick to log metadata read failure")
+	}
+}
+
+func TestConvergence_TickLogsTransientWispLookupFailures(t *testing.T) {
+	cr, store := setupConvergenceRuntime(t)
+	stderr := cr.stderr.(*bytes.Buffer)
+
+	createReply := sendAndReceive(t, cr, convergenceRequest{
+		Command: "create",
+		Params: map[string]string{
+			"formula":        "test-formula",
+			"target":         "test-agent",
+			"max_iterations": "5",
+		},
+	})
+	if createReply.Error != "" {
+		t.Fatalf("create error: %s", createReply.Error)
+	}
+	var created convergence.CreateResult
+	if err := json.Unmarshal(createReply.Result, &created); err != nil {
+		t.Fatalf("unmarshaling: %v", err)
+	}
+
+	adapter := cr.convHandler.Store.(*convergenceStoreAdapter)
+	if err := adapter.populateIndex(); err != nil {
+		t.Fatalf("populateIndex: %v", err)
+	}
+
+	wispID := created.FirstWispID
+	adapter.store = &failingGetStore{MemStore: store, failID: wispID}
+
+	cr.convergenceTick(context.Background())
+
+	if got := stderr.String(); got == "" {
+		t.Fatal("expected convergenceTick to log transient wisp lookup failure")
 	}
 }
 

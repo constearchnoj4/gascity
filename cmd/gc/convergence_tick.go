@@ -57,6 +57,8 @@ func (cr *CityRuntime) convergenceTick(ctx context.Context) {
 	for _, beadID := range cr.convStoreAdapter.activeBeadIDs() {
 		meta, err := cr.convStoreAdapter.GetMetadata(beadID)
 		if err != nil {
+			fmt.Fprintf(cr.stderr, "%s: convergence: metadata(%s): %v\n", //nolint:errcheck
+				cr.logPrefix, beadID, err)
 			continue
 		}
 		// Only process active beads; skip others like waiting_manual
@@ -72,6 +74,8 @@ func (cr *CityRuntime) convergenceTick(ctx context.Context) {
 		wispInfo, wErr := cr.convStoreAdapter.GetBead(activeWisp)
 		if wErr != nil {
 			if !errors.Is(wErr, beads.ErrNotFound) {
+				fmt.Fprintf(cr.stderr, "%s: convergence: active wisp(%s): %v\n", //nolint:errcheck
+					cr.logPrefix, activeWisp, wErr)
 				continue
 			}
 			reconciler := &convergence.Reconciler{Handler: cr.convHandler}
