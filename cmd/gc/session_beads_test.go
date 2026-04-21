@@ -2040,6 +2040,95 @@ func TestSyncSessionBeads_ClearsConfigDerivedMetadataForNamelessResolvedProvider
 	}
 }
 
+func TestSyncSessionBeads_ClearsConfigDerivedMetadataForNilResolvedProvider(t *testing.T) {
+	store := newCountingMetadataStore()
+	clk := &clock.Fake{Time: time.Date(2026, 4, 22, 12, 6, 0, 0, time.UTC)}
+	sp := runtime.NewFake()
+	if err := sp.Start(context.Background(), "worker", runtime.Config{Command: "gemini --model pro"}); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	_, err := store.Create(beads.Bead{
+		Title:  "worker",
+		Type:   sessionBeadType,
+		Labels: []string{sessionBeadLabel},
+		Metadata: map[string]string{
+			"session_name":       "worker",
+			"template":           "worker",
+			"state":              "awake",
+			"wake_mode":          "resume",
+			"command":            "gemini --model pro",
+			"provider":           "gemini-wrapper",
+			"provider_kind":      "gemini",
+			"builtin_ancestor":   "gemini",
+			"resume_flag":        "resume",
+			"resume_style":       "subcommand",
+			"resume_command":     "gemini resume {{.SessionKey}}",
+			"session_key":        "session-123",
+			"generation":         "1",
+			"continuation_epoch": "7",
+		},
+	})
+	if err != nil {
+		t.Fatalf("creating seed bead: %v", err)
+	}
+
+	ds := map[string]TemplateParams{
+		"worker": {
+			TemplateName:     "worker",
+			Command:          "/usr/bin/custom --fallback",
+			WakeMode:         "resume",
+			ResolvedProvider: nil,
+		},
+	}
+
+	var stderr bytes.Buffer
+	syncSessionBeads("", store, ds, sp, allConfiguredDS(ds), nil, clk, &stderr, false)
+
+	if stderr.Len() > 0 {
+		t.Fatalf("unexpected stderr: %s", stderr.String())
+	}
+	if store.batchCalls != 1 {
+		t.Fatalf("batchCalls = %d, want 1", store.batchCalls)
+	}
+	if store.singleCalls != 0 {
+		t.Fatalf("singleCalls = %d, want 0", store.singleCalls)
+	}
+
+	all := allSessionBeads(t, store)
+	if len(all) != 1 {
+		t.Fatalf("expected 1 bead, got %d", len(all))
+	}
+	got := all[0].Metadata
+	if got["command"] != "/usr/bin/custom --fallback" {
+		t.Fatalf("command = %q, want /usr/bin/custom --fallback", got["command"])
+	}
+	if got["provider"] != "" {
+		t.Fatalf("provider = %q, want empty", got["provider"])
+	}
+	if got["provider_kind"] != "" {
+		t.Fatalf("provider_kind = %q, want empty", got["provider_kind"])
+	}
+	if got["builtin_ancestor"] != "" {
+		t.Fatalf("builtin_ancestor = %q, want empty", got["builtin_ancestor"])
+	}
+	if got["resume_flag"] != "" {
+		t.Fatalf("resume_flag = %q, want empty", got["resume_flag"])
+	}
+	if got["resume_style"] != "" {
+		t.Fatalf("resume_style = %q, want empty", got["resume_style"])
+	}
+	if got["resume_command"] != "" {
+		t.Fatalf("resume_command = %q, want empty", got["resume_command"])
+	}
+	if got["session_key"] != "session-123" {
+		t.Fatalf("session_key = %q, want session-123", got["session_key"])
+	}
+	if got["continuation_epoch"] != "7" {
+		t.Fatalf("continuation_epoch = %q, want 7", got["continuation_epoch"])
+	}
+}
+
 func TestSyncSessionBeads_ConfigDrift(t *testing.T) {
 	store := beads.NewMemStore()
 	clk := &clock.Fake{Time: time.Date(2026, 3, 7, 12, 0, 0, 0, time.UTC)}

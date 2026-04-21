@@ -57,7 +57,14 @@ func snapshotOrLoadSessionBeads(store beads.Store, sessionBeads *sessionBeadSnap
 
 func resolvedProviderSessionMetadata(resolved *config.ResolvedProvider) map[string]string {
 	if resolved == nil {
-		return nil
+		return map[string]string{
+			"provider":         "",
+			"provider_kind":    "",
+			"builtin_ancestor": "",
+			"resume_flag":      "",
+			"resume_style":     "",
+			"resume_command":   "",
+		}
 	}
 	name := strings.TrimSpace(resolved.Name)
 	ancestor := strings.TrimSpace(resolved.BuiltinAncestor)
@@ -86,7 +93,7 @@ func stampResolvedProviderSessionMetadata(meta map[string]string, resolved *conf
 }
 
 func queueResolvedProviderSessionMetadata(existing map[string]string, queue func(string, string), resolved *config.ResolvedProvider) {
-	if queue == nil || resolved == nil {
+	if queue == nil {
 		return
 	}
 	desired := resolvedProviderSessionMetadata(resolved)
@@ -894,9 +901,7 @@ func syncSessionBeadsWithSnapshot(
 		if tp.Command != "" && b.Metadata["command"] != tp.Command {
 			queueMeta("command", tp.Command)
 		}
-		if tp.ResolvedProvider != nil {
-			queueResolvedProviderSessionMetadata(b.Metadata, queueMeta, tp.ResolvedProvider)
-		}
+		queueResolvedProviderSessionMetadata(b.Metadata, queueMeta, tp.ResolvedProvider)
 
 		// Update existing bead metadata.
 		// live_hash is NOT updated here — it records what config the
