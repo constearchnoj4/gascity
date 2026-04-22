@@ -551,7 +551,7 @@ func reconcileSessionBeadsTraced(
 			clearChurn(session, store)
 		}
 		if alive && shouldRollbackPendingCreate(session) {
-			if !recoverRunningPendingCreate(session, tp, cfg, store, clk, trace) {
+			if !recoverRunningPendingCreate(session, tp, cfg, store, sp, clk, trace) {
 				fmt.Fprintf(stderr, "session reconciler: recovering pending create %s: metadata repair incomplete\n", name) //nolint:errcheck
 			}
 		}
@@ -590,13 +590,9 @@ func reconcileSessionBeadsTraced(
 				if hasCapability && newSessionKey == "" {
 					batch["session_key"] = ""
 				}
+				clearPendingStartFingerprintMetadata(batch)
 				_ = store.SetMetadataBatch(session.ID, batch)
-				if session.Metadata == nil {
-					session.Metadata = make(map[string]string, len(batch))
-				}
-				for key, value := range batch {
-					session.Metadata[key] = value
-				}
+				applySessionMetadataBatch(session, batch)
 				if alive {
 					if err := workerKillSessionTargetWithConfig("", store, sp, cfg, name); err != nil {
 						fmt.Fprintf(stderr, "session reconciler: stopping restart-requested %s: %v\n", name, err) //nolint:errcheck
@@ -649,6 +645,13 @@ func reconcileSessionBeadsTraced(
 					}
 					match := startedConfigMatchesFingerprint(session.Metadata, agentCfg, tp.ResolvedProvider)
 					currentHash := match.currentHash
+					if match.matches && match.legacyProviderFallback {
+						liveProvider := liveSessionProviderFamily(sp, name)
+						expectedProvider := expectedProviderFamilyForTemplate(session, tp)
+						if expectedProvider != "" && liveProvider != "" && liveProvider != expectedProvider {
+							match.matches = false
+						}
+					}
 					if !match.matches {
 						fmt.Fprintf(stderr, "config-drift %s: stored=%s current=%s cmd=%q\n", name, storedHash[:12], currentHash[:12], agentCfg.Command) //nolint:errcheck
 						// Diagnostic: log per-field breakdown to identify the drifting field.

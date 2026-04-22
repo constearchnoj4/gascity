@@ -651,20 +651,8 @@ func withProviderSessionFingerprint(cfg runtime.Config, resolved *config.Resolve
 	return cfg
 }
 
-func coreFingerprintConfig(tp TemplateParams, fallback map[string]string) runtime.Config {
-	return withProviderSessionFingerprint(templateParamsToConfig(tp), tp.ResolvedProvider, fallback)
-}
-
 func coreFingerprintForTemplateParams(tp TemplateParams, fallback map[string]string) string {
 	return coreFingerprint(templateParamsToConfig(tp), tp.ResolvedProvider, fallback)
-}
-
-func coreFingerprintBreakdownForTemplateParams(tp TemplateParams, fallback map[string]string) map[string]string {
-	return coreFingerprintBreakdown(templateParamsToConfig(tp), tp.ResolvedProvider, fallback)
-}
-
-func legacyCoreFingerprintForTemplateParams(tp TemplateParams) string {
-	return runtime.CoreFingerprint(templateParamsToConfig(tp))
 }
 
 func coreFingerprint(cfg runtime.Config, resolved *config.ResolvedProvider, fallback map[string]string) string {
@@ -698,8 +686,9 @@ func startedConfigMatchesFingerprint(
 	storedProviderMeta, storedProviderKnown := providerSessionFingerprintMetadata(nil, meta)
 	if !storedProviderKnown {
 		return startedConfigFingerprintMatch{
-			currentHash: currentHash,
-			matches:     true,
+			currentHash:            currentHash,
+			matches:                true,
+			legacyProviderFallback: true,
 		}
 	}
 	desiredProviderMeta, desiredProviderKnown := providerSessionFingerprintMetadata(resolved, nil)
@@ -720,9 +709,10 @@ func startedConfigMatchesFingerprint(
 }
 
 type startedConfigFingerprintMatch struct {
-	currentHash          string
-	matches              bool
-	providerMetadataSync bool
+	currentHash            string
+	matches                bool
+	providerMetadataSync   bool
+	legacyProviderFallback bool
 }
 
 func startedConfigMatchesCurrentFingerprint(meta map[string]string, tp TemplateParams) startedConfigFingerprintMatch {

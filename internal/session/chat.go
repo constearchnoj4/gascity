@@ -49,7 +49,7 @@ func (m *Manager) clearStaleResumeMetadata(id string, b *beads.Bead) error {
 		"continuation_reset_pending": "true",
 	}
 	if err := m.store.SetMetadataBatch(id, batch); err != nil {
-		return fmt.Errorf("clearing stale resume metadata: %w", err)
+		return fmt.Errorf("clearing stale resume metadata (session_key, started_config_hash, continuation_reset_pending): %w", err)
 	}
 	if b.Metadata == nil {
 		b.Metadata = make(map[string]string)

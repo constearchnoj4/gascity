@@ -22,15 +22,26 @@ import (
 )
 
 const (
-	defaultMaxParallelStartsPerWave = 3
-	defaultMaxParallelStopsPerWave  = 3
-	defaultMaxParallelInterrupts    = 16
+	defaultMaxParallelStartsPerWave     = 3
+	defaultMaxParallelStopsPerWave      = 3
+	defaultMaxParallelInterrupts        = 16
+	pendingStartedConfigHashMetadataKey = "pending_started_config_hash"
+	pendingStartedLiveHashMetadataKey   = "pending_started_live_hash"
+	pendingCoreHashBreakdownMetadataKey = "pending_core_hash_breakdown"
+	pendingProviderFamilyMetadataKey    = "pending_provider_family"
 
 	// staleKeyDetectDelay is how long to wait after starting a session
 	// before checking if it died immediately (stale resume key detection).
 	// Matches the same constant in internal/session/chat.go.
 	staleKeyDetectDelay = 2 * time.Second
 )
+
+var pendingStartFingerprintMetadataKeys = []string{
+	pendingStartedConfigHashMetadataKey,
+	pendingStartedLiveHashMetadataKey,
+	pendingCoreHashBreakdownMetadataKey,
+	pendingProviderFamilyMetadataKey,
+}
 
 type startCandidate struct {
 	session *beads.Bead
@@ -64,6 +75,13 @@ type startResult struct {
 	started         time.Time
 	finished        time.Time
 	rollbackPending bool
+}
+
+type pendingStartFingerprint struct {
+	coreHash       string
+	liveHash       string
+	coreBreakdown  string
+	providerFamily string
 }
 
 type stopTarget struct {
@@ -110,6 +128,97 @@ func formatLifecycleError(err error) string {
 		return ""
 	}
 	return strings.ReplaceAll(err.Error(), "\n", "\\n")
+}
+
+func applySessionMetadataBatch(session *beads.Bead, batch map[string]string) {
+	if session == nil || len(batch) == 0 {
+		return
+	}
+	if session.Metadata == nil {
+		session.Metadata = make(map[string]string, len(batch))
+	}
+	for key, value := range batch {
+		session.Metadata[key] = value
+	}
+}
+
+func clearPendingStartFingerprintMetadata(batch map[string]string) {
+	if batch == nil {
+		return
+	}
+	for _, key := range pendingStartFingerprintMetadataKeys {
+		batch[key] = ""
+	}
+}
+
+func pendingStartFingerprintMetadata(prepared *preparedStart) map[string]string {
+	if prepared == nil {
+		return nil
+	}
+	coreBreakdown := ""
+	if bdj, err := json.Marshal(prepared.coreBreakdown); err == nil {
+		coreBreakdown = string(bdj)
+	}
+	providerFamily := ""
+	if prepared.cfg.Env != nil {
+		providerFamily = strings.TrimSpace(prepared.cfg.Env["GC_PROVIDER"])
+	}
+	return map[string]string{
+		pendingStartedConfigHashMetadataKey: prepared.coreHash,
+		pendingStartedLiveHashMetadataKey:   prepared.liveHash,
+		pendingCoreHashBreakdownMetadataKey: coreBreakdown,
+		pendingProviderFamilyMetadataKey:    providerFamily,
+	}
+}
+
+func stagePendingStartFingerprint(session *beads.Bead, prepared *preparedStart, store beads.Store) error {
+	if session == nil || prepared == nil || store == nil || strings.TrimSpace(session.ID) == "" {
+		return nil
+	}
+	batch := pendingStartFingerprintMetadata(prepared)
+	if err := store.SetMetadataBatch(session.ID, batch); err != nil {
+		return fmt.Errorf("staging pending start fingerprint: %w", err)
+	}
+	applySessionMetadataBatch(session, batch)
+	return nil
+}
+
+func pendingStartFingerprintFromMetadata(meta map[string]string) (pendingStartFingerprint, bool) {
+	if len(meta) == 0 {
+		return pendingStartFingerprint{}, false
+	}
+	coreHash := strings.TrimSpace(meta[pendingStartedConfigHashMetadataKey])
+	liveHash := strings.TrimSpace(meta[pendingStartedLiveHashMetadataKey])
+	if coreHash == "" || liveHash == "" {
+		return pendingStartFingerprint{}, false
+	}
+	return pendingStartFingerprint{
+		coreHash:       coreHash,
+		liveHash:       liveHash,
+		coreBreakdown:  strings.TrimSpace(meta[pendingCoreHashBreakdownMetadataKey]),
+		providerFamily: strings.TrimSpace(meta[pendingProviderFamilyMetadataKey]),
+	}, true
+}
+
+func liveSessionProviderFamily(sp runtime.Provider, sessionName string) string {
+	if sp == nil || strings.TrimSpace(sessionName) == "" {
+		return ""
+	}
+	family, err := sp.GetMeta(sessionName, "GC_PROVIDER")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(family)
+}
+
+func expectedProviderFamilyForTemplate(session *beads.Bead, tp TemplateParams) string {
+	if tp.ResolvedProvider != nil {
+		return resolvedProviderLaunchFamily(tp.ResolvedProvider)
+	}
+	if session == nil {
+		return ""
+	}
+	return sessionProviderFamily(*session)
 }
 
 func logLifecycleWave(w io.Writer, op string, wave int, started time.Time, count int) {
@@ -273,7 +382,14 @@ func prepareStartCandidate(
 	if _, _, err := preWakeCommit(session, store, clk); err != nil {
 		return nil, err
 	}
-	return buildPreparedStart(candidate, cfg, store)
+	prepared, err := buildPreparedStart(candidate, cfg, store)
+	if err != nil {
+		return nil, err
+	}
+	if err := stagePendingStartFingerprint(session, prepared, store); err != nil {
+		return nil, err
+	}
+	return prepared, nil
 }
 
 func buildPreparedStart(
@@ -699,6 +815,7 @@ func commitStartResultTraced(
 		ClearPendingCreateClaim: shouldRollbackPendingCreate(session),
 		Now:                     clk.Now(),
 	})
+	clearPendingStartFingerprintMetadata(metadata)
 	if err := store.SetMetadataBatch(session.ID, metadata); err != nil {
 		fmt.Fprintf(stderr, "session reconciler: storing hashes for %s: %v\n", name, err) //nolint:errcheck
 		if trace != nil {
@@ -714,12 +831,7 @@ func commitStartResultTraced(
 		logLifecycleOutcome(stderr, "start", wave, name, tp.TemplateName, "metadata_batch_failed", result.started, result.finished, err)
 		return false
 	}
-	if session.Metadata == nil {
-		session.Metadata = make(map[string]string)
-	}
-	for key, value := range metadata {
-		session.Metadata[key] = value
-	}
+	applySessionMetadataBatch(session, metadata)
 	if trace != nil {
 		trace.recordMutation("bead_metadata", tp.TemplateName, name, "metadata_batch", session.ID, "started_config_hash", "", result.prepared.coreHash, "success", traceRecordPayload{
 			"wave": wave,
@@ -734,24 +846,65 @@ func recoverRunningPendingCreate(
 	tp TemplateParams,
 	cfg *config.City,
 	store beads.Store,
+	sp runtime.Provider,
 	clk clock.Clock,
 	trace *sessionReconcilerTraceCycle,
 ) bool {
 	if session == nil || store == nil {
 		return false
 	}
-	prepared, err := buildPreparedStart(startCandidate{session: session, tp: tp}, cfg, store)
-	if err != nil {
+	fingerprint, staged := pendingStartFingerprintFromMetadata(session.Metadata)
+	if !staged {
+		prepared, err := buildPreparedStart(startCandidate{session: session, tp: tp}, cfg, store)
+		if err != nil {
+			if trace != nil {
+				trace.recordDecision("reconciler.session.pending_create", tp.TemplateName, tp.SessionName, "pending_create_rebuild_failed", "failed", traceRecordPayload{
+					"error": err.Error(),
+				}, nil, "")
+			}
+			return false
+		}
+		fingerprint = pendingStartFingerprint{
+			coreHash:       prepared.coreHash,
+			liveHash:       prepared.liveHash,
+			providerFamily: strings.TrimSpace(prepared.cfg.Env["GC_PROVIDER"]),
+		}
+		if bdj, err := json.Marshal(prepared.coreBreakdown); err == nil {
+			fingerprint.coreBreakdown = string(bdj)
+		}
+	}
+	sessionName := strings.TrimSpace(session.Metadata["session_name"])
+	if sessionName == "" {
+		sessionName = tp.SessionName
+	}
+	expectedProvider := fingerprint.providerFamily
+	if expectedProvider == "" {
+		expectedProvider = expectedProviderFamilyForTemplate(session, tp)
+	}
+	liveProvider := liveSessionProviderFamily(sp, sessionName)
+	if expectedProvider != "" && liveProvider != "" && liveProvider != expectedProvider {
+		batch := map[string]string{
+			"restart_requested": "true",
+		}
+		clearPendingStartFingerprintMetadata(batch)
+		if err := store.SetMetadataBatch(session.ID, batch); err != nil {
+			if trace != nil {
+				trace.recordDecision("reconciler.session.pending_create", tp.TemplateName, tp.SessionName, "pending_create_provider_mismatch_write_failed", "failed", traceRecordPayload{
+					"error":             err.Error(),
+					"expected_provider": expectedProvider,
+					"live_provider":     liveProvider,
+				}, nil, "")
+			}
+			return false
+		}
+		applySessionMetadataBatch(session, batch)
 		if trace != nil {
-			trace.recordDecision("reconciler.session.pending_create", tp.TemplateName, tp.SessionName, "pending_create_rebuild_failed", "failed", traceRecordPayload{
-				"error": err.Error(),
+			trace.recordDecision("reconciler.session.pending_create", tp.TemplateName, tp.SessionName, "pending_create_provider_mismatch", "restart_requested", traceRecordPayload{
+				"expected_provider": expectedProvider,
+				"live_provider":     liveProvider,
 			}, nil, "")
 		}
-		return false
-	}
-	coreBreakdown := ""
-	if bdj, err := json.Marshal(prepared.coreBreakdown); err == nil {
-		coreBreakdown = string(bdj)
+		return true
 	}
 	// Fall back to wall clock if the caller didn't inject one — the marker
 	// is load-bearing for the post-create sweep guard, so leaving it unset
@@ -763,9 +916,9 @@ func recoverRunningPendingCreate(
 		now = time.Now()
 	}
 	metadata := sessionpkg.CommitStartedPatch(sessionpkg.CommitStartedPatchInput{
-		CoreHash:      prepared.coreHash,
-		LiveHash:      prepared.liveHash,
-		CoreBreakdown: coreBreakdown,
+		CoreHash:      fingerprint.coreHash,
+		LiveHash:      fingerprint.liveHash,
+		CoreBreakdown: fingerprint.coreBreakdown,
 		ConfirmState: confirmPendingStart(session.Metadata["state"]) ||
 			sessionpkg.State(strings.TrimSpace(session.Metadata["state"])) == sessionpkg.StateAwake,
 		ClearSleepReason: session.Metadata["sleep_reason"] != "",
@@ -776,6 +929,7 @@ func recoverRunningPendingCreate(
 		ClearPendingCreateClaim: true,
 		Now:                     now,
 	})
+	clearPendingStartFingerprintMetadata(metadata)
 	if err := store.SetMetadataBatch(session.ID, metadata); err != nil {
 		if trace != nil {
 			trace.recordDecision("reconciler.session.pending_create", tp.TemplateName, tp.SessionName, "pending_create_commit_failed", "failed", traceRecordPayload{
@@ -784,14 +938,15 @@ func recoverRunningPendingCreate(
 		}
 		return false
 	}
-	if session.Metadata == nil {
-		session.Metadata = make(map[string]string, len(metadata))
-	}
-	for key, value := range metadata {
-		session.Metadata[key] = value
-	}
+	applySessionMetadataBatch(session, metadata)
 	if trace != nil {
-		trace.recordDecision("reconciler.session.pending_create", tp.TemplateName, tp.SessionName, "pending_create_healed", "healed", nil, nil, "")
+		source := "rebuilt"
+		if staged {
+			source = "staged"
+		}
+		trace.recordDecision("reconciler.session.pending_create", tp.TemplateName, tp.SessionName, "pending_create_healed", "healed", traceRecordPayload{
+			"fingerprint_source": source,
+		}, nil, "")
 	}
 	return true
 }

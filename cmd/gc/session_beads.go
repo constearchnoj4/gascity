@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -26,17 +25,6 @@ const sessionBeadLabel = "gc:session"
 const sessionBeadType = "session"
 
 var (
-	resolvedProviderFamilyMetadataKeys = []string{
-		"provider",
-		"provider_kind",
-		"builtin_ancestor",
-	}
-	resolvedProviderResumeMetadataKeys = []string{
-		"resume_flag",
-		"resume_style",
-		"resume_command",
-		"session_id_flag",
-	}
 	resolvedProviderConfigMetadataKeys = []string{
 		"provider",
 		"provider_kind",
@@ -108,24 +96,6 @@ func stampResolvedProviderSessionMetadata(meta map[string]string, resolved *conf
 	}
 }
 
-func resolvedProviderSessionMetadataHash(resolved *config.ResolvedProvider, keys []string) string {
-	desired := resolvedProviderSessionMetadata(resolved)
-	if desired == nil {
-		return ""
-	}
-	h := sha256.New()
-	selected := make(map[string]string, len(keys))
-	for _, key := range keys {
-		selected[key] = desired[key]
-	}
-	hashSortedStringMap(h, selected)
-	sum := fmt.Sprintf("%x", h.Sum(nil))
-	if len(sum) > 16 {
-		return sum[:16]
-	}
-	return sum
-}
-
 func queueResolvedProviderSessionMetadataKeys(existing map[string]string, queue func(string, string), resolved *config.ResolvedProvider, keys []string) {
 	if queue == nil {
 		return
@@ -142,18 +112,8 @@ func queueResolvedProviderSessionMetadataKeys(existing map[string]string, queue 
 	}
 }
 
-func hasStoredResolvedProviderSessionMetadataKeys(meta map[string]string, keys []string) bool {
-	for _, key := range keys {
-		if strings.TrimSpace(meta[key]) != "" {
-			return true
-		}
-	}
-	return false
-}
-
 func shouldSyncResolvedProviderMetadata(b beads.Bead, tp TemplateParams, alive bool) bool {
-	state := strings.TrimSpace(b.Metadata["state"])
-	if !alive || (state != "active" && state != "awake") {
+	if !alive {
 		return true
 	}
 	match := startedConfigMatchesCurrentFingerprint(b.Metadata, tp)

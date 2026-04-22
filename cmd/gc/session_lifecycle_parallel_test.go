@@ -1085,7 +1085,7 @@ func TestRecoverRunningPendingCreate_StampsCreationCompleteAtForAlreadyActive(t 
 	}
 	clkTime := time.Date(2026, 3, 18, 12, 0, 1, 0, time.UTC)
 
-	if !recoverRunningPendingCreate(&bead, tp, cfg, store, &clock.Fake{Time: clkTime}, nil) {
+	if !recoverRunningPendingCreate(&bead, tp, cfg, store, runtime.NewFake(), &clock.Fake{Time: clkTime}, nil) {
 		t.Fatal("recoverRunningPendingCreate returned false, want true")
 	}
 
@@ -1103,6 +1103,188 @@ func TestRecoverRunningPendingCreate_StampsCreationCompleteAtForAlreadyActive(t 
 	wantStartedHash := coreFingerprintForTemplateParams(tp, nil)
 	if got.Metadata["started_config_hash"] != wantStartedHash {
 		t.Fatalf("started_config_hash = %q, want %q", got.Metadata["started_config_hash"], wantStartedHash)
+	}
+}
+
+func TestPrepareStartCandidate_StagesPendingStartFingerprintBeforeLaunch(t *testing.T) {
+	store := beads.NewMemStore()
+	clk := &clock.Fake{Time: time.Date(2026, 4, 22, 12, 10, 0, 0, time.UTC)}
+	bead, err := store.Create(beads.Bead{
+		Title:  "helper",
+		Type:   sessionBeadType,
+		Labels: []string{sessionBeadLabel},
+		Metadata: map[string]string{
+			"session_name":         "sky",
+			"pending_create_claim": "true",
+			"state":                "creating",
+			"generation":           "1",
+			"continuation_epoch":   "1",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tp := TemplateParams{
+		Command:      "test-cmd",
+		SessionName:  "sky",
+		TemplateName: "helper",
+		ResolvedProvider: &config.ResolvedProvider{
+			Name:            "claude-wrapper",
+			BuiltinAncestor: "claude",
+		},
+	}
+
+	prepared, err := prepareStartCandidate(startCandidate{session: &bead, tp: tp}, &config.City{Agents: []config.Agent{{Name: "helper"}}}, store, clk)
+	if err != nil {
+		t.Fatalf("prepareStartCandidate: %v", err)
+	}
+	got, err := store.Get(bead.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Metadata[pendingStartedConfigHashMetadataKey] != prepared.coreHash {
+		t.Fatalf("%s = %q, want %q", pendingStartedConfigHashMetadataKey, got.Metadata[pendingStartedConfigHashMetadataKey], prepared.coreHash)
+	}
+	if got.Metadata[pendingStartedLiveHashMetadataKey] != prepared.liveHash {
+		t.Fatalf("%s = %q, want %q", pendingStartedLiveHashMetadataKey, got.Metadata[pendingStartedLiveHashMetadataKey], prepared.liveHash)
+	}
+	if got.Metadata[pendingProviderFamilyMetadataKey] != "claude" {
+		t.Fatalf("%s = %q, want claude", pendingProviderFamilyMetadataKey, got.Metadata[pendingProviderFamilyMetadataKey])
+	}
+	if got.Metadata[pendingCoreHashBreakdownMetadataKey] == "" {
+		t.Fatalf("%s is empty", pendingCoreHashBreakdownMetadataKey)
+	}
+}
+
+func TestRecoverRunningPendingCreate_UsesStagedPendingFingerprintAcrossDesiredProviderChange(t *testing.T) {
+	store := beads.NewMemStore()
+	oldTP := TemplateParams{
+		Command:      "test-cmd",
+		SessionName:  "sky",
+		TemplateName: "helper",
+		ResolvedProvider: &config.ResolvedProvider{
+			Name:            "claude-wrapper",
+			BuiltinAncestor: "claude",
+		},
+	}
+	currentTP := TemplateParams{
+		Command:      "test-cmd",
+		SessionName:  "sky",
+		TemplateName: "helper",
+		ResolvedProvider: &config.ResolvedProvider{
+			Name:            "gemini-wrapper",
+			BuiltinAncestor: "gemini",
+		},
+	}
+	oldBreakdownJSON, err := json.Marshal(coreFingerprintBreakdown(templateParamsToConfig(oldTP), oldTP.ResolvedProvider, nil))
+	if err != nil {
+		t.Fatalf("Marshal(oldBreakdown): %v", err)
+	}
+	bead, err := store.Create(beads.Bead{
+		Title:  "helper",
+		Type:   sessionBeadType,
+		Labels: []string{sessionBeadLabel},
+		Metadata: map[string]string{
+			"session_name":                      "sky",
+			"pending_create_claim":              "true",
+			"state":                             "creating",
+			pendingStartedConfigHashMetadataKey: coreFingerprintForTemplateParams(oldTP, nil),
+			pendingStartedLiveHashMetadataKey:   runtime.LiveFingerprint(templateParamsToConfig(oldTP)),
+			pendingCoreHashBreakdownMetadataKey: string(oldBreakdownJSON),
+			pendingProviderFamilyMetadataKey:    "claude",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sp := runtime.NewFake()
+	if err := sp.Start(context.Background(), "sky", runtime.Config{Command: "test-cmd"}); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if err := sp.SetMeta("sky", "GC_SESSION_ID", bead.ID); err != nil {
+		t.Fatalf("SetMeta(GC_SESSION_ID): %v", err)
+	}
+	if err := sp.SetMeta("sky", "GC_PROVIDER", "claude"); err != nil {
+		t.Fatalf("SetMeta(GC_PROVIDER): %v", err)
+	}
+	clkTime := time.Date(2026, 4, 22, 12, 11, 0, 0, time.UTC)
+
+	if !recoverRunningPendingCreate(&bead, currentTP, &config.City{Agents: []config.Agent{{Name: "helper"}}}, store, sp, &clock.Fake{Time: clkTime}, nil) {
+		t.Fatal("recoverRunningPendingCreate returned false, want true")
+	}
+
+	got, err := store.Get(bead.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Metadata["started_config_hash"] != coreFingerprintForTemplateParams(oldTP, nil) {
+		t.Fatalf("started_config_hash = %q, want staged hash %q", got.Metadata["started_config_hash"], coreFingerprintForTemplateParams(oldTP, nil))
+	}
+	if got.Metadata["started_config_hash"] == coreFingerprintForTemplateParams(currentTP, nil) {
+		t.Fatalf("started_config_hash = %q, unexpectedly matched current desired fingerprint", got.Metadata["started_config_hash"])
+	}
+	if got.Metadata[pendingStartedConfigHashMetadataKey] != "" {
+		t.Fatalf("%s = %q, want cleared after recovery", pendingStartedConfigHashMetadataKey, got.Metadata[pendingStartedConfigHashMetadataKey])
+	}
+	if got.Metadata[pendingProviderFamilyMetadataKey] != "" {
+		t.Fatalf("%s = %q, want cleared after recovery", pendingProviderFamilyMetadataKey, got.Metadata[pendingProviderFamilyMetadataKey])
+	}
+}
+
+func TestRecoverRunningPendingCreate_SetsRestartRequestedWhenLiveProviderMismatchesPendingFingerprint(t *testing.T) {
+	store := beads.NewMemStore()
+	bead, err := store.Create(beads.Bead{
+		Title:  "helper",
+		Type:   sessionBeadType,
+		Labels: []string{sessionBeadLabel},
+		Metadata: map[string]string{
+			"session_name":                      "sky",
+			"pending_create_claim":              "true",
+			"state":                             "creating",
+			pendingStartedConfigHashMetadataKey: "old-hash",
+			pendingStartedLiveHashMetadataKey:   "old-live-hash",
+			pendingProviderFamilyMetadataKey:    "claude",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sp := runtime.NewFake()
+	if err := sp.Start(context.Background(), "sky", runtime.Config{Command: "test-cmd"}); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if err := sp.SetMeta("sky", "GC_SESSION_ID", bead.ID); err != nil {
+		t.Fatalf("SetMeta(GC_SESSION_ID): %v", err)
+	}
+	if err := sp.SetMeta("sky", "GC_PROVIDER", "gemini"); err != nil {
+		t.Fatalf("SetMeta(GC_PROVIDER): %v", err)
+	}
+	tp := TemplateParams{
+		Command:      "test-cmd",
+		SessionName:  "sky",
+		TemplateName: "helper",
+		ResolvedProvider: &config.ResolvedProvider{
+			Name:            "claude-wrapper",
+			BuiltinAncestor: "claude",
+		},
+	}
+
+	if !recoverRunningPendingCreate(&bead, tp, &config.City{Agents: []config.Agent{{Name: "helper"}}}, store, sp, &clock.Fake{Time: time.Date(2026, 4, 22, 12, 12, 0, 0, time.UTC)}, nil) {
+		t.Fatal("recoverRunningPendingCreate returned false, want true")
+	}
+
+	got, err := store.Get(bead.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Metadata["restart_requested"] != "true" {
+		t.Fatalf("restart_requested = %q, want true", got.Metadata["restart_requested"])
+	}
+	if got.Metadata["started_config_hash"] != "" {
+		t.Fatalf("started_config_hash = %q, want empty until restarted", got.Metadata["started_config_hash"])
+	}
+	if got.Metadata[pendingStartedConfigHashMetadataKey] != "" {
+		t.Fatalf("%s = %q, want cleared when scheduling restart", pendingStartedConfigHashMetadataKey, got.Metadata[pendingStartedConfigHashMetadataKey])
 	}
 }
 
