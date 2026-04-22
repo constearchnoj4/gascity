@@ -1781,6 +1781,29 @@ func TestReconcileSessionBeads_AsleepNamedSessionResetsOnProviderOnlyDrift(t *te
 	}
 }
 
+func TestStartedConfigMatchesCurrentFingerprint_NilProviderMatchesExplicitEmptyProviderMetadata(t *testing.T) {
+	startTP := TemplateParams{
+		Command:          "/usr/bin/custom --fast",
+		TemplateName:     "worker",
+		ResolvedProvider: &config.ResolvedProvider{},
+	}
+	currentTP := TemplateParams{
+		Command:      "/usr/bin/custom --fast",
+		TemplateName: "worker",
+	}
+	meta := map[string]string{
+		"started_config_hash": coreFingerprintForTemplateParams(startTP, nil),
+	}
+	for _, key := range resolvedProviderConfigMetadataKeys {
+		meta[key] = ""
+	}
+
+	match := startedConfigMatchesCurrentFingerprint(meta, currentTP)
+	if !match.matches {
+		t.Fatalf("expected nil-provider match for explicit-empty provider metadata, got %+v", match)
+	}
+}
+
 // Regression test for #127: a freshly created session can be drained for
 // config-drift shortly after wake because the reconciler's drift check runs
 // before started_config_hash is written. The fix skips drift detection until

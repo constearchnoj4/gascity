@@ -237,6 +237,37 @@ func TestSyncSessionBeads_StampsProviderFamilyMetadata(t *testing.T) {
 	}
 }
 
+func TestSyncSessionBeads_StampsExplicitEmptyProviderMetadata(t *testing.T) {
+	store := beads.NewMemStore()
+	clk := &clock.Fake{Time: time.Date(2026, 3, 7, 12, 1, 0, 0, time.UTC)}
+	sp := runtime.NewFake()
+	_ = sp.Start(context.TODO(), "mayor", runtime.Config{Command: "/usr/bin/custom --fast"})
+
+	ds := map[string]TemplateParams{
+		"mayor": {
+			TemplateName:     "mayor",
+			Command:          "/usr/bin/custom --fast",
+			ResolvedProvider: &config.ResolvedProvider{},
+		},
+	}
+
+	var stderr bytes.Buffer
+	syncSessionBeads("", store, ds, sp, allConfiguredDS(ds), nil, clk, &stderr, false)
+
+	if stderr.Len() > 0 {
+		t.Fatalf("unexpected stderr: %s", stderr.String())
+	}
+	all := allSessionBeads(t, store)
+	if len(all) != 1 {
+		t.Fatalf("expected 1 bead, got %d", len(all))
+	}
+	for _, key := range resolvedProviderConfigMetadataKeys {
+		if got, ok := all[0].Metadata[key]; !ok || got != "" {
+			t.Fatalf("%s = %q (present=%v), want explicit empty value", key, got, ok)
+		}
+	}
+}
+
 func TestSyncSessionBeads_BackfillsProviderFamilyMetadata(t *testing.T) {
 	store := beads.NewMemStore()
 	clk := &clock.Fake{Time: time.Date(2026, 3, 7, 12, 0, 0, 0, time.UTC)}

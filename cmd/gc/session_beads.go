@@ -104,9 +104,7 @@ func stampResolvedProviderSessionMetadata(meta map[string]string, resolved *conf
 		return
 	}
 	for key, value := range resolvedProviderSessionMetadata(resolved) {
-		if value != "" {
-			meta[key] = value
-		}
+		meta[key] = value
 	}
 }
 
