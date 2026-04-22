@@ -1324,6 +1324,7 @@ func resetConfiguredNamedSessionForConfigDrift(
 		newSessionKey = newKey
 	}
 	batch := sessionpkg.ConfigDriftResetPatch(sessionpkg.State(nextState), newSessionKey)
+	clearPendingStartFingerprintMetadata(batch)
 	batch[namedSessionConfigDriftDeferredAtMetadata] = ""
 	batch[namedSessionConfigDriftDeferredKeyMetadata] = ""
 	if err := store.SetMetadataBatch(session.ID, batch); err != nil {

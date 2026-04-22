@@ -1810,15 +1810,17 @@ func TestReconcileSessionBeads_AsleepNamedSessionResetsOnProviderOnlyDrift(t *te
 	env.desiredState[sessionName] = newTP
 	session := env.createSessionBead(sessionName, "worker")
 	env.setSessionMetadata(&session, map[string]string{
-		namedSessionMetadataKey:      "true",
-		namedSessionIdentityMetadata: "worker",
-		namedSessionModeMetadata:     "on_demand",
-		"state":                      "asleep",
-		"session_key":                "stale-key",
-		"started_config_hash":        coreFingerprintForTemplateParams(oldTP, nil),
-		"provider":                   "claude-wrapper",
-		"provider_kind":              "claude",
-		"builtin_ancestor":           "claude",
+		namedSessionMetadataKey:             "true",
+		namedSessionIdentityMetadata:        "worker",
+		namedSessionModeMetadata:            "on_demand",
+		"state":                             "asleep",
+		"session_key":                       "stale-key",
+		"started_config_hash":               coreFingerprintForTemplateParams(oldTP, nil),
+		"provider":                          "claude-wrapper",
+		"provider_kind":                     "claude",
+		"builtin_ancestor":                  "claude",
+		pendingStartedConfigHashMetadataKey: "stale-pending-hash",
+		pendingProviderFamilyMetadataKey:    "claude",
 	})
 
 	env.reconcile([]beads.Bead{session})
@@ -1838,6 +1840,12 @@ func TestReconcileSessionBeads_AsleepNamedSessionResetsOnProviderOnlyDrift(t *te
 	}
 	if got.Metadata["state"] != "asleep" {
 		t.Fatalf("state = %q, want asleep", got.Metadata["state"])
+	}
+	if got.Metadata[pendingStartedConfigHashMetadataKey] != "" {
+		t.Fatalf("%s = %q, want cleared on config-drift reset", pendingStartedConfigHashMetadataKey, got.Metadata[pendingStartedConfigHashMetadataKey])
+	}
+	if got.Metadata[pendingProviderFamilyMetadataKey] != "" {
+		t.Fatalf("%s = %q, want cleared on config-drift reset", pendingProviderFamilyMetadataKey, got.Metadata[pendingProviderFamilyMetadataKey])
 	}
 }
 
@@ -1893,6 +1901,36 @@ func TestStartedConfigMatchesCurrentFingerprint_LegacyProviderMetadataWithoutSes
 	}
 	if match.providerMetadataSync {
 		t.Fatalf("providerMetadataSync = true, want false until session_id_flag is committed by a fresh start")
+	}
+}
+
+func TestStartedConfigMatchesCurrentFingerprint_LegacyPartialProviderMetadataMatches(t *testing.T) {
+	currentTP := TemplateParams{
+		Command:      "/usr/bin/custom --fast",
+		TemplateName: "worker",
+		ResolvedProvider: &config.ResolvedProvider{
+			Name:            "claude-wrapper",
+			BuiltinAncestor: "claude",
+			ResumeFlag:      "--resume",
+			ResumeStyle:     "flag",
+			ResumeCommand:   "claude --resume {{.SessionKey}}",
+			SessionIDFlag:   "--session-id",
+		},
+	}
+	meta := map[string]string{
+		"started_config_hash": runtime.CoreFingerprint(templateParamsToConfig(currentTP)),
+		"provider":            "claude-wrapper",
+		"resume_flag":         "--resume",
+		"resume_style":        "flag",
+		"resume_command":      "claude --resume {{.SessionKey}}",
+	}
+
+	match := startedConfigMatchesCurrentFingerprint(meta, currentTP)
+	if !match.matches {
+		t.Fatalf("expected legacy partial provider metadata to match, got %+v", match)
+	}
+	if match.providerMetadataSync {
+		t.Fatalf("providerMetadataSync = true, want false until partial metadata is fully restamped")
 	}
 }
 

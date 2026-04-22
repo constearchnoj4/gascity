@@ -667,12 +667,15 @@ func legacyProviderSessionMetadataCompatible(stored, desired map[string]string) 
 	if len(stored) == 0 || len(desired) == 0 {
 		return false
 	}
-	if strings.TrimSpace(stored["session_id_flag"]) != "" || strings.TrimSpace(desired["session_id_flag"]) == "" {
-		return false
-	}
 	for _, key := range resolvedProviderConfigMetadataKeys {
-		if key == "session_id_flag" {
+		if stored[key] == desired[key] {
 			continue
+		}
+		if stored[key] == "" {
+			switch key {
+			case "provider_kind", "builtin_ancestor", "session_id_flag":
+				continue
+			}
 		}
 		if stored[key] != desired[key] {
 			return false
