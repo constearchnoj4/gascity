@@ -171,7 +171,7 @@ func buildFormulaRuns(state State, formulaName, requestedScopeKind, requestedSco
 	}, nil
 }
 
-func buildFormulaDetail(ctx context.Context, name string, paths []string, _ string, vars map[string]string) (*formulaDetailResponse, error) {
+func buildFormulaDetail(ctx context.Context, name string, paths []string, _ string, vars map[string]string, validateRuntimeVars bool) (*formulaDetailResponse, error) {
 	if len(paths) == 0 {
 		return nil, fmt.Errorf("%w: %q not in search paths", errFormulaNotFound, name)
 	}
@@ -184,7 +184,7 @@ func buildFormulaDetail(ctx context.Context, name string, paths []string, _ stri
 	if err != nil {
 		return nil, err
 	}
-	if len(vars) > 0 {
+	if validateRuntimeVars {
 		if err := molecule.ValidateRecipeRuntimeVars(recipe, molecule.Options{Vars: vars}); err != nil {
 			return nil, fmt.Errorf("formula %q: %w", name, err)
 		}
