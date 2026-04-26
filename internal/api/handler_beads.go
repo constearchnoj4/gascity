@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/gastownhall/gascity/internal/beads"
+	"github.com/gastownhall/gascity/internal/config"
 	"github.com/gastownhall/gascity/internal/session"
 )
 
@@ -109,6 +110,9 @@ func (s *Server) findStore(rig string) beads.Store {
 // prefix/routes mapping when possible. If there is no routed match, it falls
 // back to the legacy store scan order.
 func (s *Server) beadStoresForID(id string) []beads.Store {
+	if store := s.resolveStoreByConfiguredPrefixForID(strings.TrimSpace(id)); store != nil {
+		return []beads.Store{store}
+	}
 	if prefix := beadPrefix(strings.TrimSpace(id)); prefix != "" {
 		if store := s.resolveStoreByPrefix(prefix); store != nil {
 			return []beads.Store{store}
@@ -127,6 +131,30 @@ func (s *Server) beadStoresForID(id string) []beads.Store {
 	return candidates
 }
 
+func (s *Server) resolveStoreByConfiguredPrefixForID(id string) beads.Store {
+	cfg := s.state.Config()
+	if cfg == nil || id == "" {
+		return nil
+	}
+	stores := s.state.BeadStores()
+	var matchedStore beads.Store
+	matchedLen := -1
+	match := func(prefix string, store beads.Store) {
+		if prefix == "" || store == nil || !strings.HasPrefix(id, prefix+"-") {
+			return
+		}
+		if len(prefix) > matchedLen {
+			matchedLen = len(prefix)
+			matchedStore = store
+		}
+	}
+	match(config.EffectiveHQPrefix(cfg), s.state.CityBeadStore())
+	for _, rig := range cfg.Rigs {
+		match(rig.EffectivePrefix(), stores[rig.Name])
+	}
+	return matchedStore
+}
+
 // resolveStoreByPrefix finds the store that owns a bead prefix by checking
 // routes.jsonl files in the city and each rig's .beads/ directory, then
 // mapping the resolved store path back to the correct store.
@@ -137,6 +165,21 @@ func (s *Server) resolveStoreByPrefix(prefix string) beads.Store {
 	}
 	stores := s.state.BeadStores()
 	cityPath := strings.TrimSpace(s.state.CityPath())
+
+	if prefix == config.EffectiveHQPrefix(cfg) {
+		if cityStore := s.state.CityBeadStore(); cityStore != nil {
+			return cityStore
+		}
+	}
+	for _, rig := range cfg.Rigs {
+		if prefix != rig.EffectivePrefix() {
+			continue
+		}
+		if store, exists := stores[rig.Name]; exists {
+			return store
+		}
+		return nil
+	}
 
 	// Build rig path → name map for reverse lookup (used by both city
 	// and rig route resolution below).
