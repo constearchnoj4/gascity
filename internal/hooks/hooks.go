@@ -150,8 +150,15 @@ func installOverlayManaged(fs fsys.FS, workDir, provider string) error {
 			return fmt.Errorf("reading %s: %w", name, err)
 		}
 		dst := filepath.Join(workDir, filepath.FromSlash(rel))
-		return writeEmbeddedManaged(fs, dst, data, nil)
+		return writeEmbeddedManaged(fs, dst, data, overlayFileNeedsUpgrade(provider))
 	})
+}
+
+func overlayFileNeedsUpgrade(provider string) func([]byte) bool {
+	if provider == "codex" {
+		return codexFileNeedsUpgrade
+	}
+	return nil
 }
 
 // installClaude writes the runtime settings file (.gc/settings.json) in the
@@ -316,6 +323,18 @@ func readClaudeSettingsCandidate(fs fsys.FS, path string) (claudeCandidateState,
 		return candidateMissing, nil, nil
 	}
 	return candidateUnreadable, nil, err
+}
+
+func codexFileNeedsUpgrade(existing []byte) bool {
+	content := string(existing)
+	return codexContainsManagedHook(content) && !strings.Contains(content, `--hook-format codex`)
+}
+
+func codexContainsManagedHook(content string) bool {
+	return strings.Contains(content, `gc prime --hook`) ||
+		strings.Contains(content, `gc nudge drain --inject`) ||
+		strings.Contains(content, `gc mail check --inject`) ||
+		strings.Contains(content, `gc hook --inject`)
 }
 
 func writeManagedFile(fs fsys.FS, dst string, data []byte, policy writeManagedFilePolicy) error {
