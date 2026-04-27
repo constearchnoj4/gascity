@@ -1909,10 +1909,10 @@ func (a *Agent) DrainTimeoutDuration() time.Duration {
 
 // EffectiveScaleCheck returns the scale check command for this agent.
 // If ScaleCheck is set, returns it. Otherwise returns a default that
-// counts actionable work routed to this agent's template, including
+// counts new unassigned work routed to this agent's template, including
 // standalone formula-dispatched molecule beads (which bd ready excludes).
-// Attached formulas contribute demand through the routed source bead in the
-// ready/in_progress tiers instead of through the molecule count.
+// Assigned in-progress work is resumed from session beads, so it must not
+// create additional generic pool demand here.
 func (a *Agent) EffectiveScaleCheck() string {
 	if a.ScaleCheck != "" {
 		return a.ScaleCheck
@@ -1920,11 +1920,9 @@ func (a *Agent) EffectiveScaleCheck() string {
 	template := a.QualifiedName()
 	return `ready=$(bd ready --metadata-field gc.routed_to=` + template +
 		` --unassigned --json 2>/dev/null | jq 'length' 2>/dev/null); ` +
-		`active=$(bd list --metadata-field gc.routed_to=` + template +
-		` --status=in_progress --no-assignee --json 2>/dev/null | jq 'length' 2>/dev/null); ` +
 		`molecules=$(bd list --metadata-field gc.routed_to=` + template +
 		` --status=open --type=molecule --no-assignee --json 2>/dev/null | jq 'length' 2>/dev/null); ` +
-		`echo "$(( ${ready:-0} + ${active:-0} + ${molecules:-0} ))" || echo 0`
+		`echo "$(( ${ready:-0} + ${molecules:-0} ))" || echo 0`
 }
 
 // EffectiveMaxActiveSessions returns the agent's max active sessions.

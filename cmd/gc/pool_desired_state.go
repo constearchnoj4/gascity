@@ -54,7 +54,7 @@ func PoolDesiredCounts(states []PoolDesiredState) map[string]int {
 // from scale_check, while this function only preserves sessions that already
 // own actionable work.
 // Each bead's gc.routed_to determines which agent template it belongs to.
-// scaleCheckCounts maps agent template → desired count from scale_check.
+// scaleCheckCounts maps agent template → new session demand from scale_check.
 // Pass nil for either when unavailable.
 func ComputePoolDesiredStates(
 	cfg *config.City,
@@ -151,16 +151,11 @@ func computePoolDesiredStates(
 		}
 	}
 
-	// Merge scale_check demand: for each agent, if scale_check wants more
-	// sessions than bead-driven requests already cover, add the difference
-	// as "new" tier requests. This ensures the scale_check command (which
-	// runs in the correct rig directory) is always the authoritative demand
-	// signal, while bead-driven resume requests preserve running sessions.
+	// Merge scale_check demand. In bead-backed reconciliation, scale_check is
+	// the authoritative signal for new unassigned demand only; resume requests
+	// are calculated independently from assigned work and must not be deducted
+	// from that count.
 	if len(scaleCheckCounts) > 0 {
-		beadDriven := make(map[string]int, len(allRequests))
-		for _, r := range allRequests {
-			beadDriven[r.Template]++
-		}
 		for _, agent := range cfg.Agents {
 			if agent.Suspended {
 				continue
@@ -170,8 +165,7 @@ func computePoolDesiredStates(
 			if !ok {
 				continue
 			}
-			deficit := scaleCount - beadDriven[template]
-			for j := 0; j < deficit; j++ {
+			for j := 0; j < scaleCount; j++ {
 				allRequests = append(allRequests, SessionRequest{
 					Template: template,
 					Tier:     "new",
