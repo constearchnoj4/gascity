@@ -21,7 +21,9 @@ import (
 // testStore wraps a bead slice for SetMetadata tracking in tests.
 type testStore struct {
 	beads.Store
-	metadata map[string]map[string]string // id -> key -> value
+	metadata             map[string]map[string]string // id -> key -> value
+	metadataBatchCalls   int
+	metadataBatchPatches []map[string]string
 }
 
 func newTestStore() *testStore {
@@ -37,6 +39,12 @@ func (s *testStore) SetMetadata(id, key, value string) error {
 }
 
 func (s *testStore) SetMetadataBatch(id string, kvs map[string]string) error {
+	s.metadataBatchCalls++
+	patch := make(map[string]string, len(kvs))
+	for k, v := range kvs {
+		patch[k] = v
+	}
+	s.metadataBatchPatches = append(s.metadataBatchPatches, patch)
 	for k, v := range kvs {
 		if err := s.SetMetadata(id, k, v); err != nil {
 			return err
@@ -1069,6 +1077,74 @@ func TestClearWakeFailures(t *testing.T) {
 	}
 	if session.Metadata["quarantined_until"] != "" {
 		t.Error("quarantined_until should be cleared")
+	}
+}
+
+func TestClearWakeFailuresSkipsNoOpClear(t *testing.T) {
+	tests := []struct {
+		name     string
+		metadata map[string]string
+	}{
+		{name: "absent"},
+		{name: "already clear wake attempts", metadata: map[string]string{"wake_attempts": "0"}},
+		{name: "already clear quarantine", metadata: map[string]string{"quarantined_until": ""}},
+		{name: "already clear both", metadata: map[string]string{"wake_attempts": "0", "quarantined_until": ""}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := newTestStore()
+			session := makeBead("b1", tt.metadata)
+
+			clearWakeFailures(&session, store)
+
+			if store.metadataBatchCalls != 0 {
+				t.Fatalf("SetMetadataBatch called %d times with %v, want 0", store.metadataBatchCalls, store.metadataBatchPatches)
+			}
+			if len(store.metadata) != 0 {
+				t.Fatalf("metadata writes = %v, want none", store.metadata)
+			}
+		})
+	}
+}
+
+func TestClearWakeFailuresWritesOnlyChangedFields(t *testing.T) {
+	tests := []struct {
+		name      string
+		metadata  map[string]string
+		wantPatch map[string]string
+	}{
+		{
+			name:      "wake attempts only",
+			metadata:  map[string]string{"wake_attempts": "3", "quarantined_until": ""},
+			wantPatch: map[string]string{"wake_attempts": "0"},
+		},
+		{
+			name:      "quarantine only",
+			metadata:  map[string]string{"wake_attempts": "0", "quarantined_until": "2026-03-08T12:00:00Z"},
+			wantPatch: map[string]string{"quarantined_until": ""},
+		},
+		{
+			name:      "both fields",
+			metadata:  map[string]string{"wake_attempts": "3", "quarantined_until": "2026-03-08T12:00:00Z"},
+			wantPatch: map[string]string{"wake_attempts": "0", "quarantined_until": ""},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := newTestStore()
+			session := makeBead("b1", tt.metadata)
+
+			clearWakeFailures(&session, store)
+
+			if store.metadataBatchCalls != 1 {
+				t.Fatalf("SetMetadataBatch called %d times, want 1", store.metadataBatchCalls)
+			}
+			if !reflect.DeepEqual(store.metadataBatchPatches[0], tt.wantPatch) {
+				t.Fatalf("metadata patch = %v, want %v", store.metadataBatchPatches[0], tt.wantPatch)
+			}
+		})
 	}
 }
 
