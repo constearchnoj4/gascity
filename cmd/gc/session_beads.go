@@ -246,6 +246,7 @@ func retireDuplicateConfiguredNamedSessionBeads(
 	indexBySessionName map[string]int,
 	now time.Time,
 	stderr io.Writer,
+	rigStores ...map[string]beads.Store,
 ) []beads.Bead {
 	if store == nil || cfg == nil {
 		return openBeads
@@ -300,7 +301,7 @@ func retireDuplicateConfiguredNamedSessionBeads(
 				fmt.Fprintf(stderr, "session beads: archiving duplicate named session %s: %v\n", b.ID, err) //nolint:errcheck
 				continue
 			}
-			reassignWorkAssignedToRetiredSessionBead(store, b.ID, openBeads[winner].ID, stderr)
+			reassignWorkAssignedToRetiredSessionBead(store, b, openBeads[winner].ID, stderr, rigStores...)
 			reassignStateAssignedToRetiredSessionBead(store, b.ID, openBeads[winner].ID, now, stderr)
 			if b.Metadata == nil {
 				b.Metadata = make(map[string]string, len(batch))
@@ -353,6 +354,7 @@ func retireRemovedConfiguredNamedSessionBead(
 	b beads.Bead,
 	now time.Time,
 	stderr io.Writer,
+	rigStores ...map[string]beads.Store,
 ) bool {
 	if store == nil {
 		return false
@@ -376,7 +378,7 @@ func retireRemovedConfiguredNamedSessionBead(
 		fmt.Fprintf(stderr, "session beads: archiving removed named session %s: %v\n", b.ID, err) //nolint:errcheck
 		return false
 	}
-	unclaimWorkAssignedToRetiredSessionBead(store, b.ID, retiredSessionFallbackRoute(b), stderr)
+	unclaimWorkAssignedToRetiredSessionBead(store, b, retiredSessionFallbackRoute(b), stderr, rigStores...)
 	cancelStateAssignedToRetiredSessionBead(store, b.ID, now, stderr)
 	return true
 }
@@ -388,62 +390,124 @@ func retiredSessionFallbackRoute(b beads.Bead) string {
 	return strings.TrimSpace(b.Metadata["agent_name"])
 }
 
-func unclaimWorkAssignedToRetiredSessionBead(store beads.Store, sessionID, fallbackRoute string, stderr io.Writer) {
-	if store == nil || strings.TrimSpace(sessionID) == "" {
-		return
-	}
+// unclaimWorkAssignedToRetiredSessionBead clears assignees on every
+// work bead that points at the retired session, then resets in_progress
+// beads to "open" so the work_query can re-route them via Tier 3
+// (gc.routed_to + --unassigned).
+//
+// Workers may stamp `assignee` with any of the session's identifiers —
+// the bead ID, the runtime session_name (e.g.
+// "workflows__codex-max-mc-XYZ", what $GC_SESSION_NAME / $GC_AGENT
+// expand to for pool sessions), or, for configured named sessions, the
+// configured named identity. We must query each form. Using only the
+// bead ID misses every pool session, since pool workers always stamp
+// the session_name form. Worse, sessionHasOpenAssignedWorkInStore (the
+// session-bead-close gate) DOES match all three identifiers, so the
+// gate sees the work and refuses to close the retiring session bead —
+// which keeps the bead "open" and makes releaseOrphanedPoolAssignments
+// skip the work bead too. The result is a deadlock: the work sits with
+// a stale assignee forever, invisible to the demand counter and
+// blocking new spawns at the same slot. Mirroring the identifier set
+// here is what breaks that cycle.
+func unclaimWorkAssignedToRetiredSessionBead(store beads.Store, sessionBead beads.Bead, fallbackRoute string, stderr io.Writer, rigStores ...map[string]beads.Store) {
 	if stderr == nil {
 		stderr = io.Discard
 	}
+	identifiers := session.AssigneeIdentifiers(sessionBead)
+	if len(identifiers) == 0 {
+		return
+	}
+	for _, s := range sessionOwnershipStores(store, rigStores...) {
+		unclaimWorkAssignedToRetiredSessionBeadInStore(s, identifiers, fallbackRoute, stderr)
+	}
+}
+
+func unclaimWorkAssignedToRetiredSessionBeadInStore(store beads.Store, identifiers []string, fallbackRoute string, stderr io.Writer) {
 	empty := ""
 	open := "open"
+	seen := make(map[string]struct{})
 	for _, status := range []string{"open", "in_progress"} {
-		work, err := store.List(beads.ListQuery{Assignee: sessionID, Status: status, Live: true})
-		if err != nil {
-			fmt.Fprintf(stderr, "session beads: listing work assigned to retired session %s: %v\n", sessionID, err) //nolint:errcheck
-			continue
-		}
-		for _, item := range work {
-			if session.IsSessionBeadOrRepairable(item) {
+		for _, assignee := range identifiers {
+			work, err := store.List(beads.ListQuery{Assignee: assignee, Status: status, Live: true})
+			if err != nil {
+				fmt.Fprintf(stderr, "session beads: listing work assigned to retired session %s: %v\n", assignee, err) //nolint:errcheck
 				continue
 			}
-			update := beads.UpdateOpts{Assignee: &empty}
-			// Clearing assignee on an in_progress bead leaves it invisible to
-			// the work_query: Tier 1 needs an assignee match, Tiers 2/3 only
-			// match "ready" status. Reset to "open" so a fresh worker can
-			// re-claim via the routed queue (gc.routed_to + --unassigned).
-			if item.Status == "in_progress" {
-				update.Status = &open
-			}
-			if fallbackRoute != "" && strings.TrimSpace(item.Metadata["gc.routed_to"]) == "" {
-				update.Metadata = map[string]string{"gc.routed_to": fallbackRoute}
-			}
-			if err := store.Update(item.ID, update); err != nil {
-				fmt.Fprintf(stderr, "session beads: unclaiming work %s assigned to retired session %s: %v\n", item.ID, sessionID, err) //nolint:errcheck
+			for _, item := range work {
+				if session.IsSessionBeadOrRepairable(item) {
+					continue
+				}
+				if _, dup := seen[item.ID]; dup {
+					continue
+				}
+				seen[item.ID] = struct{}{}
+				update := beads.UpdateOpts{Assignee: &empty}
+				// Clearing assignee on an in_progress bead leaves it invisible to
+				// the work_query: Tier 1 needs an assignee match, Tiers 2/3 only
+				// match "ready" status. Reset to "open" so a fresh worker can
+				// re-claim via the routed queue (gc.routed_to + --unassigned).
+				if item.Status == "in_progress" {
+					update.Status = &open
+				}
+				if fallbackRoute != "" && strings.TrimSpace(item.Metadata["gc.routed_to"]) == "" {
+					update.Metadata = map[string]string{"gc.routed_to": fallbackRoute}
+				}
+				if err := store.Update(item.ID, update); err != nil {
+					fmt.Fprintf(stderr, "session beads: unclaiming work %s assigned to retired session %s: %v\n", item.ID, assignee, err) //nolint:errcheck
+				}
 			}
 		}
 	}
 }
 
-func reassignWorkAssignedToRetiredSessionBead(store beads.Store, oldSessionID, newSessionID string, stderr io.Writer) {
-	if store == nil || strings.TrimSpace(oldSessionID) == "" || strings.TrimSpace(newSessionID) == "" {
+func sessionOwnershipStores(store beads.Store, rigStores ...map[string]beads.Store) []beads.Store {
+	stores := make([]beads.Store, 0, 1+len(rigStores))
+	if store != nil {
+		stores = append(stores, store)
+	}
+	for _, set := range rigStores {
+		for _, s := range set {
+			if s != nil {
+				stores = append(stores, s)
+			}
+		}
+	}
+	return stores
+}
+
+func reassignWorkAssignedToRetiredSessionBead(store beads.Store, oldSession beads.Bead, newSessionID string, stderr io.Writer, rigStores ...map[string]beads.Store) {
+	identifiers := session.AssigneeIdentifiers(oldSession)
+	if store == nil || len(identifiers) == 0 || strings.TrimSpace(newSessionID) == "" {
 		return
 	}
 	if stderr == nil {
 		stderr = io.Discard
 	}
+	for _, s := range sessionOwnershipStores(store, rigStores...) {
+		reassignWorkAssignedToRetiredSessionBeadInStore(s, identifiers, newSessionID, stderr)
+	}
+}
+
+func reassignWorkAssignedToRetiredSessionBeadInStore(store beads.Store, identifiers []string, newSessionID string, stderr io.Writer) {
+	seen := make(map[string]struct{})
 	for _, status := range []string{"open", "in_progress"} {
-		work, err := store.List(beads.ListQuery{Assignee: oldSessionID, Status: status, Live: true})
-		if err != nil {
-			fmt.Fprintf(stderr, "session beads: listing work assigned to retired session %s: %v\n", oldSessionID, err) //nolint:errcheck
-			continue
-		}
-		for _, item := range work {
-			if session.IsSessionBeadOrRepairable(item) {
+		for _, assignee := range identifiers {
+			work, err := store.List(beads.ListQuery{Assignee: assignee, Status: status, Live: true})
+			if err != nil {
+				fmt.Fprintf(stderr, "session beads: listing work assigned to retired session %s: %v\n", assignee, err) //nolint:errcheck
 				continue
 			}
-			if err := store.Update(item.ID, beads.UpdateOpts{Assignee: &newSessionID}); err != nil {
-				fmt.Fprintf(stderr, "session beads: reassigning work %s from retired session %s to %s: %v\n", item.ID, oldSessionID, newSessionID, err) //nolint:errcheck
+			for _, item := range work {
+				if session.IsSessionBeadOrRepairable(item) {
+					continue
+				}
+				if _, ok := seen[item.ID]; ok {
+					continue
+				}
+				seen[item.ID] = struct{}{}
+				if err := store.Update(item.ID, beads.UpdateOpts{Assignee: &newSessionID}); err != nil {
+					fmt.Fprintf(stderr, "session beads: reassigning work %s from retired session %s to %s: %v\n", item.ID, assignee, newSessionID, err) //nolint:errcheck
+				}
 			}
 		}
 	}
@@ -524,6 +588,7 @@ func syncSessionBeadsWithSnapshot(
 	stderr io.Writer,
 	skipClose bool,
 	sessionBeads *sessionBeadSnapshot,
+	rigStores ...map[string]beads.Store,
 ) (map[string]string, *sessionBeadSnapshot) {
 	if store == nil {
 		return nil, nil
@@ -592,7 +657,7 @@ func syncSessionBeadsWithSnapshot(
 		}
 		canonical, ok := bySessionName[sn]
 		if ok && canonical.ID != b.ID {
-			if closeBead(store, b.ID, "duplicate", clk.Now().UTC(), stderr) {
+			if closeDuplicateSessionBead(store, b, canonical, "duplicate", clk.Now().UTC(), stderr, rigStores...) {
 				openBeads[i].Status = "closed"
 			}
 		}
@@ -617,7 +682,8 @@ func syncSessionBeadsWithSnapshot(
 			if strings.TrimSpace(b.Metadata["session_name"]) == spec.SessionName {
 				continue
 			}
-			if closeBead(store, b.ID, "reconfigured", now, stderr) {
+			unclaimWorkAssignedToRetiredSessionBead(store, b, retiredSessionFallbackRoute(b), stderr, rigStores...)
+			if closeBead(store, b.ID, "reconfigured", now, stderr, rigStores...) {
 				if sn := strings.TrimSpace(b.Metadata["session_name"]); sn != "" {
 					running, _ := workerSessionTargetRunningWithConfig("", store, sp, cfg, sn)
 					if running {
@@ -631,7 +697,7 @@ func syncSessionBeadsWithSnapshot(
 			}
 		}
 		openBeads = retireDuplicateConfiguredNamedSessionBeads(
-			store, sp, cfg, cityName, openBeads, bySessionName, indexBySessionName, now, stderr,
+			store, sp, cfg, cityName, openBeads, bySessionName, indexBySessionName, now, stderr, rigStores...,
 		)
 	}
 
@@ -1023,7 +1089,7 @@ func syncSessionBeadsWithSnapshot(
 			if isNamedSessionBead(b) {
 				identity := namedSessionIdentity(b)
 				if identity != "" && (cfg == nil || config.FindNamedSession(cfg, identity) == nil) {
-					if retireRemovedConfiguredNamedSessionBead(store, sp, b, now, stderr) {
+					if retireRemovedConfiguredNamedSessionBead(store, sp, b, now, stderr, rigStores...) {
 						if idx, ok := indexBySessionName[sn]; ok {
 							openBeads[idx].Status = "open"
 							if openBeads[idx].Metadata == nil {
@@ -1047,7 +1113,8 @@ func syncSessionBeadsWithSnapshot(
 				continue
 			}
 			if configuredNames[sn] {
-				if closeBead(store, b.ID, "suspended", now, stderr) {
+				unclaimWorkAssignedToRetiredSessionBead(store, b, retiredSessionFallbackRoute(b), stderr, rigStores...)
+				if closeBead(store, b.ID, "suspended", now, stderr, rigStores...) {
 					if idx, ok := indexBySessionName[sn]; ok {
 						openBeads[idx].Status = "closed"
 					}
@@ -1061,7 +1128,8 @@ func syncSessionBeadsWithSnapshot(
 						}
 					}
 				}
-				if closeBead(store, b.ID, "orphaned", now, stderr) {
+				unclaimWorkAssignedToRetiredSessionBead(store, b, retiredSessionFallbackRoute(b), stderr, rigStores...)
+				if closeBead(store, b.ID, "orphaned", now, stderr, rigStores...) {
 					if idx, ok := indexBySessionName[sn]; ok {
 						openBeads[idx].Status = "closed"
 					}
@@ -1252,6 +1320,7 @@ func reapStaleSessionBeads(
 	dt *drainTracker,
 	clk clock.Clock,
 	stderr io.Writer,
+	rigStores ...map[string]beads.Store,
 ) int {
 	if store == nil || sp == nil {
 		return 0
@@ -1299,7 +1368,7 @@ func reapStaleSessionBeads(
 		if b.CreatedAt.IsZero() || now.Sub(b.CreatedAt) < staleCreatingStateTimeout {
 			continue
 		}
-		if closeBead(store, b.ID, "stale-session", now.UTC(), stderr) {
+		if closeBead(store, b.ID, "stale-session", now.UTC(), stderr, rigStores...) {
 			fmt.Fprintf(stderr, "WARN: reconciler: reaped stuck-creating session bead %s — tmux session %q not found\n", b.ID, sn) //nolint:errcheck
 			reaped++
 		}
@@ -1322,11 +1391,80 @@ func reapStaleSessionBeads(
 // active session must either drain it or unclaim its work first (via
 // unclaimWorkAssignedToRetiredSessionBead, which also resets in_progress
 // status to open so the routed queue can re-dispatch the work).
-func closeBead(store beads.Store, id, reason string, now time.Time, stderr io.Writer) bool {
-	if hasNonSessionAssignedWork(store, id, stderr) {
+func closeBead(store beads.Store, id, reason string, now time.Time, stderr io.Writer, rigStores ...map[string]beads.Store) bool {
+	if stderr == nil {
+		stderr = io.Discard
+	}
+	if store == nil || strings.TrimSpace(id) == "" {
+		return false
+	}
+	sessionBead, err := store.Get(id)
+	if err != nil {
+		fmt.Fprintf(stderr, "session beads: checking assigned work for %s: %v\n", id, err) //nolint:errcheck
+		return false
+	}
+	hasAssignedWork, err := sessionHasOpenAssignedWorkInStores(sessionOwnershipStores(store, rigStores...), sessionBead)
+	if err != nil {
+		fmt.Fprintf(stderr, "session beads: checking assigned work for %s: %v\n", id, err) //nolint:errcheck
+		return false
+	}
+	if hasAssignedWork {
 		fmt.Fprintf(stderr, "session beads: refusing to close %s (reason=%s): has assigned work; drain or unclaim first\n", id, reason) //nolint:errcheck
 		return false
 	}
+	return closeBeadAfterAssignedWorkCheck(store, id, reason, now, stderr)
+}
+
+func closeDuplicateSessionBead(
+	store beads.Store,
+	duplicate beads.Bead,
+	canonical beads.Bead,
+	reason string,
+	now time.Time,
+	stderr io.Writer,
+	rigStores ...map[string]beads.Store,
+) bool {
+	if stderr == nil {
+		stderr = io.Discard
+	}
+	if store == nil || strings.TrimSpace(duplicate.ID) == "" {
+		return false
+	}
+	latestDuplicate, err := store.Get(duplicate.ID)
+	if err != nil {
+		fmt.Fprintf(stderr, "session beads: checking assigned work for duplicate %s: %v\n", duplicate.ID, err) //nolint:errcheck
+		return false
+	}
+	identifiers := assigneeIdentifiersNotOwnedBy(latestDuplicate, canonical)
+	hasAssignedWork, err := hasNonSessionAssignedWorkForIdentifiers(sessionOwnershipStores(store, rigStores...), identifiers)
+	if err != nil {
+		fmt.Fprintf(stderr, "session beads: checking assigned work for duplicate %s: %v\n", duplicate.ID, err) //nolint:errcheck
+		return false
+	}
+	if hasAssignedWork {
+		fmt.Fprintf(stderr, "session beads: refusing to close duplicate %s (reason=%s): has assigned work not owned by canonical session %s\n", duplicate.ID, reason, canonical.ID) //nolint:errcheck
+		return false
+	}
+	return closeBeadAfterAssignedWorkCheck(store, duplicate.ID, reason, now, stderr)
+}
+
+func assigneeIdentifiersNotOwnedBy(owner beads.Bead, retained beads.Bead) []string {
+	retainedIdentifiers := session.AssigneeIdentifiers(retained)
+	retainedSet := make(map[string]struct{}, len(retainedIdentifiers))
+	for _, identifier := range retainedIdentifiers {
+		retainedSet[identifier] = struct{}{}
+	}
+	var identifiers []string
+	for _, identifier := range session.AssigneeIdentifiers(owner) {
+		if _, ok := retainedSet[identifier]; ok {
+			continue
+		}
+		identifiers = append(identifiers, identifier)
+	}
+	return identifiers
+}
+
+func closeBeadAfterAssignedWorkCheck(store beads.Store, id, reason string, now time.Time, stderr io.Writer) bool {
 	if setMetaBatch(store, id, session.ClosePatch(now, reason), stderr) != nil {
 		return false
 	}
@@ -1337,30 +1475,44 @@ func closeBead(store beads.Store, id, reason string, now time.Time, stderr io.Wr
 	return true
 }
 
-// hasNonSessionAssignedWork reports whether any non-session bead is currently
-// assigned (open or in_progress) to the given session bead ID. Session beads
-// (and other session-repairable beads) are excluded so that session-internal
-// bookkeeping does not block close.
-func hasNonSessionAssignedWork(store beads.Store, sessionID string, stderr io.Writer) bool {
-	if store == nil || strings.TrimSpace(sessionID) == "" {
-		return false
-	}
-	for _, status := range []string{"open", "in_progress"} {
-		work, err := store.List(beads.ListQuery{Assignee: sessionID, Status: status, Live: true})
-		if err != nil {
-			if stderr != nil {
-				fmt.Fprintf(stderr, "session beads: listing assigned work for %s: %v\n", sessionID, err) //nolint:errcheck
-			}
-			continue
+func hasNonSessionAssignedWorkForIdentifiers(stores []beads.Store, identifiers []string) (bool, error) {
+	for _, store := range stores {
+		has, err := hasNonSessionAssignedWorkInStore(store, identifiers)
+		if err != nil || has {
+			return has, err
 		}
-		for _, item := range work {
-			if session.IsSessionBeadOrRepairable(item) {
+	}
+	return false, nil
+}
+
+func hasNonSessionAssignedWorkInStore(store beads.Store, identifiers []string) (bool, error) {
+	if store == nil {
+		return false, nil
+	}
+	seen := make(map[string]struct{}, len(identifiers)*2)
+	for _, status := range []string{"open", "in_progress"} {
+		for _, assignee := range identifiers {
+			if assignee == "" {
 				continue
 			}
-			return true
+			key := status + "\x00" + assignee
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			work, err := store.List(beads.ListQuery{Assignee: assignee, Status: status, Live: true})
+			if err != nil {
+				return false, err
+			}
+			for _, item := range work {
+				if session.IsSessionBeadOrRepairable(item) {
+					continue
+				}
+				return true, nil
+			}
 		}
 	}
-	return false
+	return false, nil
 }
 
 // resolveAgentTemplate returns the config agent template name for a given

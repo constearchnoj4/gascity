@@ -936,7 +936,22 @@ func realizePoolDesiredSessions(
 ) {
 	qualifiedName := cfgAgent.QualifiedName()
 	used := make(map[string]bool)
-	usedSlots := make(map[int]bool)
+	// Seed the slot allocator with every pool_slot already bound by an
+	// open (non-closed) session bead of this template. Without this, a
+	// new-tier spawn whose `selectOrCreatePoolSessionBead` returns a
+	// freshly created bead with no slot metadata will get slot 1 from
+	// claimPoolSlot's "next free" search — even when slot 1 is still
+	// held by, e.g., a drained or asleep bead in the store. Reusable
+	// active/creating beads are excluded here so they can reclaim their
+	// own existing slot when the request loop selects them. The
+	// alias-bind step at session creation would then fail with "alias
+	// unavailable: already belongs to <holder>", silently leaving the
+	// pool under-spawned and re-attempting the same collision on every
+	// reconcile tick. Beads that this realize call will explicitly
+	// reuse via the request loop are exempt: their slots are still
+	// available to be claimed by their own session bead through
+	// `existingPoolSlot`.
+	usedSlots := preBoundPoolSlots(cfgAgent, bp.sessionBeads, poolState.Requests, &config.City{Agents: bp.agents})
 	for _, request := range poolState.Requests {
 		var prefer *beads.Bead
 		if request.SessionBeadID != "" {
@@ -1112,6 +1127,43 @@ func sessionBeadConfigAgent(cfgAgent *config.Agent, qualifiedName string) *confi
 	return &instanceAgent
 }
 
+// preBoundPoolSlots returns a `used` set of pool_slot values already
+// held by open session beads matching cfgAgent. Slots held by beads
+// that the upcoming request loop will explicitly reuse (resume tier
+// with SessionBeadID) are excluded so claimPoolSlot's existing-slot
+// reclaim path can return them naturally.
+func preBoundPoolSlots(cfgAgent *config.Agent, sessionBeads *sessionBeadSnapshot, requests []SessionRequest, cfg *config.City) map[int]bool {
+	used := make(map[int]bool)
+	if sessionBeads == nil || cfgAgent == nil {
+		return used
+	}
+	resumeIDs := make(map[string]struct{}, len(requests))
+	for _, r := range requests {
+		if r.SessionBeadID != "" {
+			resumeIDs[r.SessionBeadID] = struct{}{}
+		}
+	}
+	template := cfgAgent.QualifiedName()
+	for _, b := range sessionBeads.Open() {
+		if b.Status == "closed" {
+			continue
+		}
+		if _, ok := resumeIDs[b.ID]; ok {
+			continue
+		}
+		if normalizedSessionTemplate(b, cfg) != template {
+			continue
+		}
+		if reusablePoolSessionBeadForNewRequest(b, cfgAgent, template, cfg) {
+			continue
+		}
+		if slot := existingPoolSlot(cfgAgent, b); slot > 0 {
+			used[slot] = true
+		}
+	}
+	return used
+}
+
 func claimPoolSlot(cfgAgent *config.Agent, sessionBead beads.Bead, used map[int]bool) int {
 	if slot := existingPoolSlot(cfgAgent, sessionBead); slot > 0 && !used[slot] {
 		used[slot] = true
@@ -1180,32 +1232,36 @@ func selectOrCreatePoolSessionBead(
 	// and asleep — asleep ephemerals are not restarted; a fresh session is
 	// created instead. The reconciler closes orphaned asleep beads.
 	for _, bead := range bp.sessionBeads.Open() {
-		if bead.Status == "closed" {
-			continue
-		}
-		if isDrainedSessionBead(bead) {
-			continue
-		}
-		if bead.Metadata["state"] == "asleep" {
-			continue
-		}
-		if isManualSessionBeadForAgent(bead, cfgAgent) {
-			continue
-		}
-		if isNamedSessionBead(bead) {
-			continue
-		}
 		if used[bead.ID] {
 			continue
 		}
-		if normalizedSessionTemplate(bead, &config.City{Agents: bp.agents}) != template {
-			continue
-		}
-		if desiredName := strings.TrimSpace(bead.Metadata["session_name"]); desiredName != "" {
+		if reusablePoolSessionBeadForNewRequest(bead, cfgAgent, template, &config.City{Agents: bp.agents}) {
 			return bead, nil
 		}
 	}
 	return createPoolSessionBead(bp.beadStore, template, bp.sessionBeads)
+}
+
+func reusablePoolSessionBeadForNewRequest(bead beads.Bead, cfgAgent *config.Agent, template string, cfg *config.City) bool {
+	if bead.Status == "closed" {
+		return false
+	}
+	if isDrainedSessionBead(bead) {
+		return false
+	}
+	if bead.Metadata["state"] == "asleep" {
+		return false
+	}
+	if isManualSessionBeadForAgent(bead, cfgAgent) {
+		return false
+	}
+	if isNamedSessionBead(bead) {
+		return false
+	}
+	if normalizedSessionTemplate(bead, cfg) != template {
+		return false
+	}
+	return strings.TrimSpace(bead.Metadata["session_name"]) != ""
 }
 
 func selectOrCreateDependencyPoolSessionBead(
