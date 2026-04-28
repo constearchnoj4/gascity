@@ -3265,7 +3265,7 @@ func TestUnclaimResetsInProgressStatus(t *testing.T) {
 	}
 
 	var stderr bytes.Buffer
-	unclaimWorkAssignedToRetiredSessionBead(store, sessionBead.ID, "myrig/codex-max", &stderr)
+	unclaimWorkAssignedToRetiredSessionBead(store, sessionBead, "myrig/codex-max", &stderr)
 
 	gotInProgress, err := store.Get(work.ID)
 	if err != nil {
@@ -3287,6 +3287,94 @@ func TestUnclaimResetsInProgressStatus(t *testing.T) {
 	}
 	if gotOpen.Status != "open" {
 		t.Errorf("open status = %q, want %q (already open, must stay open)", gotOpen.Status, "open")
+	}
+}
+
+// TestUnclaimMatchesSessionNameAssignee verifies that unclaim looks up
+// assigned work by every identifier the worker might have stamped: the
+// session bead ID, the session_name (sanitized tmux form, the form
+// $GC_SESSION_NAME / $GC_AGENT take), and any configured named identity.
+//
+// Real bug observed in production: an open work bead routed to a pool
+// template had assignee="<session_name>" (e.g.
+// "workflows__codex-max-mc-5w0w6j"), pointing at a session whose tmux
+// process was already gone. The unclaim hook ran with sessionID set to
+// the session bead ID ("mc-5w0w6j") and queried only Assignee=sessionID,
+// so the SQL filter never matched the work bead. The work bead kept its
+// stale assignee. Worse, sessionHasOpenAssignedWorkInStore (used by the
+// session-bead-close gate) DOES match all three identifiers, so it sees
+// the bead and refuses to close the session bead. The result is a
+// circular gate: the session bead can't close because of a stale
+// assignment, and the assignment can't clear because the session bead
+// is still open (which makes releaseOrphanedPoolAssignments skip it
+// too). The only way out is for unclaim's identifier set to match the
+// close-gate's identifier set.
+func TestUnclaimMatchesSessionNameAssignee(t *testing.T) {
+	store := beads.NewMemStore()
+
+	// Session bead with a session_name that differs from its bead ID —
+	// the typical pool layout where the runtime/tmux name is
+	// "<sanitized template>-<bead ID>".
+	sessionBead, err := store.Create(beads.Bead{
+		Title:  "worker",
+		Type:   sessionBeadType,
+		Labels: []string{sessionBeadLabel},
+		Metadata: map[string]string{
+			"session_name": "workflows__codex-max-mc-5w0w6j",
+			"template":     "workflows/codex-max",
+			"state":        "active",
+		},
+	})
+	if err != nil {
+		t.Fatalf("create session bead: %v", err)
+	}
+
+	// Open work whose assignee is the session_name form (what
+	// $GC_SESSION_NAME / $GC_AGENT would stamp), not the bead ID.
+	openWork, err := store.Create(beads.Bead{
+		Title:    "apply-fix",
+		Status:   "open",
+		Assignee: "workflows__codex-max-mc-5w0w6j",
+		Metadata: map[string]string{"gc.routed_to": "workflows/codex-max"},
+	})
+	if err != nil {
+		t.Fatalf("create open work: %v", err)
+	}
+
+	// In-progress work also assigned by session_name.
+	inProgressWork, err := store.Create(beads.Bead{
+		Title:    "review-fix",
+		Status:   "in_progress",
+		Assignee: "workflows__codex-max-mc-5w0w6j",
+		Metadata: map[string]string{"gc.routed_to": "workflows/codex-max"},
+	})
+	if err != nil {
+		t.Fatalf("create in_progress work: %v", err)
+	}
+
+	var stderr bytes.Buffer
+	unclaimWorkAssignedToRetiredSessionBead(store, sessionBead, "workflows/codex-max", &stderr)
+
+	got, err := store.Get(openWork.ID)
+	if err != nil {
+		t.Fatalf("get open work: %v", err)
+	}
+	if got.Assignee != "" {
+		t.Errorf("open work assignee = %q, want empty (session_name-form assignee should be cleared)", got.Assignee)
+	}
+	if got.Status != "open" {
+		t.Errorf("open work status = %q, want open", got.Status)
+	}
+
+	gotInProgress, err := store.Get(inProgressWork.ID)
+	if err != nil {
+		t.Fatalf("get in_progress work: %v", err)
+	}
+	if gotInProgress.Assignee != "" {
+		t.Errorf("in_progress work assignee = %q, want empty", gotInProgress.Assignee)
+	}
+	if gotInProgress.Status != "open" {
+		t.Errorf("in_progress work status = %q, want open (must reset so work_query Tier 3 can route it)", gotInProgress.Status)
 	}
 }
 

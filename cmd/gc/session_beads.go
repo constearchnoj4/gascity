@@ -376,7 +376,7 @@ func retireRemovedConfiguredNamedSessionBead(
 		fmt.Fprintf(stderr, "session beads: archiving removed named session %s: %v\n", b.ID, err) //nolint:errcheck
 		return false
 	}
-	unclaimWorkAssignedToRetiredSessionBead(store, b.ID, retiredSessionFallbackRoute(b), stderr)
+	unclaimWorkAssignedToRetiredSessionBead(store, b, retiredSessionFallbackRoute(b), stderr)
 	cancelStateAssignedToRetiredSessionBead(store, b.ID, now, stderr)
 	return true
 }
@@ -388,41 +388,91 @@ func retiredSessionFallbackRoute(b beads.Bead) string {
 	return strings.TrimSpace(b.Metadata["agent_name"])
 }
 
-func unclaimWorkAssignedToRetiredSessionBead(store beads.Store, sessionID, fallbackRoute string, stderr io.Writer) {
-	if store == nil || strings.TrimSpace(sessionID) == "" {
+// unclaimWorkAssignedToRetiredSessionBead clears assignees on every
+// work bead that points at the retired session, then resets in_progress
+// beads to "open" so the work_query can re-route them via Tier 3
+// (gc.routed_to + --unassigned).
+//
+// Workers may stamp `assignee` with any of the session's identifiers —
+// the bead ID, the runtime session_name (e.g.
+// "workflows__codex-max-mc-XYZ", what $GC_SESSION_NAME / $GC_AGENT
+// expand to for pool sessions), or, for configured named sessions, the
+// configured named identity. We must query each form. Using only the
+// bead ID misses every pool session, since pool workers always stamp
+// the session_name form. Worse, sessionHasOpenAssignedWorkInStore (the
+// session-bead-close gate) DOES match all three identifiers, so the
+// gate sees the work and refuses to close the retiring session bead —
+// which keeps the bead "open" and makes releaseOrphanedPoolAssignments
+// skip the work bead too. The result is a deadlock: the work sits with
+// a stale assignee forever, invisible to the demand counter and
+// blocking new spawns at the same slot. Mirroring the identifier set
+// here is what breaks that cycle.
+func unclaimWorkAssignedToRetiredSessionBead(store beads.Store, sessionBead beads.Bead, fallbackRoute string, stderr io.Writer) {
+	if store == nil {
 		return
 	}
 	if stderr == nil {
 		stderr = io.Discard
 	}
+	identifiers := dedupeNonEmpty(
+		strings.TrimSpace(sessionBead.ID),
+		strings.TrimSpace(sessionBead.Metadata["session_name"]),
+		strings.TrimSpace(sessionBead.Metadata[namedSessionIdentityMetadata]),
+	)
+	if len(identifiers) == 0 {
+		return
+	}
 	empty := ""
 	open := "open"
+	seen := make(map[string]struct{})
 	for _, status := range []string{"open", "in_progress"} {
-		work, err := store.List(beads.ListQuery{Assignee: sessionID, Status: status, Live: true})
-		if err != nil {
-			fmt.Fprintf(stderr, "session beads: listing work assigned to retired session %s: %v\n", sessionID, err) //nolint:errcheck
-			continue
-		}
-		for _, item := range work {
-			if session.IsSessionBeadOrRepairable(item) {
+		for _, assignee := range identifiers {
+			work, err := store.List(beads.ListQuery{Assignee: assignee, Status: status, Live: true})
+			if err != nil {
+				fmt.Fprintf(stderr, "session beads: listing work assigned to retired session %s: %v\n", assignee, err) //nolint:errcheck
 				continue
 			}
-			update := beads.UpdateOpts{Assignee: &empty}
-			// Clearing assignee on an in_progress bead leaves it invisible to
-			// the work_query: Tier 1 needs an assignee match, Tiers 2/3 only
-			// match "ready" status. Reset to "open" so a fresh worker can
-			// re-claim via the routed queue (gc.routed_to + --unassigned).
-			if item.Status == "in_progress" {
-				update.Status = &open
-			}
-			if fallbackRoute != "" && strings.TrimSpace(item.Metadata["gc.routed_to"]) == "" {
-				update.Metadata = map[string]string{"gc.routed_to": fallbackRoute}
-			}
-			if err := store.Update(item.ID, update); err != nil {
-				fmt.Fprintf(stderr, "session beads: unclaiming work %s assigned to retired session %s: %v\n", item.ID, sessionID, err) //nolint:errcheck
+			for _, item := range work {
+				if session.IsSessionBeadOrRepairable(item) {
+					continue
+				}
+				if _, dup := seen[item.ID]; dup {
+					continue
+				}
+				seen[item.ID] = struct{}{}
+				update := beads.UpdateOpts{Assignee: &empty}
+				// Clearing assignee on an in_progress bead leaves it invisible to
+				// the work_query: Tier 1 needs an assignee match, Tiers 2/3 only
+				// match "ready" status. Reset to "open" so a fresh worker can
+				// re-claim via the routed queue (gc.routed_to + --unassigned).
+				if item.Status == "in_progress" {
+					update.Status = &open
+				}
+				if fallbackRoute != "" && strings.TrimSpace(item.Metadata["gc.routed_to"]) == "" {
+					update.Metadata = map[string]string{"gc.routed_to": fallbackRoute}
+				}
+				if err := store.Update(item.ID, update); err != nil {
+					fmt.Fprintf(stderr, "session beads: unclaiming work %s assigned to retired session %s: %v\n", item.ID, assignee, err) //nolint:errcheck
+				}
 			}
 		}
 	}
+}
+
+func dedupeNonEmpty(values ...string) []string {
+	out := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, v := range values {
+		if v == "" {
+			continue
+		}
+		if _, ok := seen[v]; ok {
+			continue
+		}
+		seen[v] = struct{}{}
+		out = append(out, v)
+	}
+	return out
 }
 
 func reassignWorkAssignedToRetiredSessionBead(store beads.Store, oldSessionID, newSessionID string, stderr io.Writer) {
