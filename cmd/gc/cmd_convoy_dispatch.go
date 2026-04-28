@@ -164,6 +164,10 @@ func runControlDispatcherWithStore(cityPath, storePath string, store beads.Store
 	switch bead.Metadata["gc.kind"] {
 	case "check", "fanout", "retry-eval", "retry", "ralph":
 		loadCfg = true
+	case "workflow-finalize":
+		// Need cfg to resolve "city:<name>" / "rig:<name>" store refs when
+		// closing parent source beads in their native stores.
+		loadCfg = true
 	}
 	if loadCfg {
 		cfg, err := loadCityConfig(cityPath, stderr)
@@ -171,6 +175,7 @@ func runControlDispatcherWithStore(cityPath, storePath string, store beads.Store
 			return err
 		}
 		resolveRigPaths(cityPath, cfg.Rigs)
+		opts.ResolveStoreRef = makeStoreRefResolver(cityPath, cfg)
 		switch bead.Metadata["gc.kind"] {
 		case "check", "fanout":
 			opts.FormulaSearchPaths = workflowFormulaSearchPaths(cfg, bead)
@@ -212,6 +217,51 @@ func runControlDispatcherWithStore(cityPath, storePath string, store beads.Store
 		fmt.Fprintln(stdout) //nolint:errcheck
 	}
 	return nil
+}
+
+// makeStoreRefResolver returns a dispatch.ProcessOptions.ResolveStoreRef
+// closure for the given city. The resolver maps "city:<name>" and
+// "rig:<name>" gc.source_store_ref values to a beads.Store rooted at the
+// matching scope. processWorkflowFinalize uses it to walk the source bead
+// chain across store boundaries so a successful rig-scope workflow closes
+// the city-scope source bead that spawned it (e.g. PR-review "Adopt PR"
+// requests).
+func makeStoreRefResolver(cityPath string, cfg *config.City) func(string) (beads.Store, error) {
+	cityName := loadedCityName(cfg, cityPath)
+	return func(ref string) (beads.Store, error) {
+		ref = strings.TrimSpace(ref)
+		if ref == "" {
+			return nil, fmt.Errorf("empty store ref")
+		}
+		switch {
+		case strings.HasPrefix(ref, "city:"):
+			name := strings.TrimSpace(strings.TrimPrefix(ref, "city:"))
+			// "city:" without a name still resolves to this city's store —
+			// older callers stamp ambiguous refs and the only reachable city
+			// from a control-dispatcher is the one it was launched in.
+			if name != "" && cityName != "" && name != cityName {
+				return nil, fmt.Errorf("city ref %q does not match this city %q", ref, cityName)
+			}
+			return openStoreAtForCity(cityPath, cityPath)
+		case strings.HasPrefix(ref, "rig:"):
+			name := strings.TrimSpace(strings.TrimPrefix(ref, "rig:"))
+			if name == "" {
+				return nil, fmt.Errorf("rig ref %q missing rig name", ref)
+			}
+			if cfg == nil {
+				return nil, fmt.Errorf("no city config available to resolve %q", ref)
+			}
+			for _, rig := range cfg.Rigs {
+				if rig.Name != name {
+					continue
+				}
+				return openControlStoreAtForCity(rig.Path, cityPath, cfg)
+			}
+			return nil, fmt.Errorf("rig %q not found in city config", name)
+		default:
+			return nil, fmt.Errorf("unsupported store ref scheme: %q", ref)
+		}
+	}
 }
 
 func openControlStoreAtForCity(storePath, cityPath string, cfg *config.City) (beads.Store, error) {
