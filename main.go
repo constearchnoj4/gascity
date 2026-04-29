@@ -24,8 +24,8 @@ func main() {
 	// Parse command-line flags
 	cfgPath := flag.String("config", "config.yaml", "Path to configuration file")
 	showVersion := flag.Bool("version", false, "Print version and exit")
-	// Default verbose to true - I always want detailed logs when running locally
-	verbose := flag.Bool("verbose", true, "Enable verbose logging")
+	// Default verbose to false so it doesn't spam logs in normal usage
+	verbose := flag.Bool("verbose", false, "Enable verbose logging")
 	flag.Parse()
 
 	if *showVersion {
