@@ -38,7 +38,8 @@ func main() {
 	// when watching rapid gas price fluctuations
 	logger := log.New(os.Stdout, "[gascity] ", log.LstdFlags|log.Lmicroseconds)
 	if *verbose {
-		logger.SetFlags(log.LstdFlags | log.Lmicroseconds | log.Lshortfile)
+		// Also log to stderr so I can pipe stdout to a file and still see live output
+		logger = log.New(os.Stderr, "[gascity] ", log.LstdFlags|log.Lmicroseconds|log.Lshortfile)
 	}
 
 	logger.Printf("Starting %s v%s", appName, appVersion)
