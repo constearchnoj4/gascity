@@ -34,9 +34,11 @@ func main() {
 	}
 
 	// Set up logger
-	logger := log.New(os.Stdout, "[gascity] ", log.LstdFlags)
+	// Using log.Lmicroseconds instead of default LstdFlags for more precise timestamps
+	// when watching rapid gas price fluctuations
+	logger := log.New(os.Stdout, "[gascity] ", log.LstdFlags|log.Lmicroseconds)
 	if *verbose {
-		logger.SetFlags(log.LstdFlags | log.Lshortfile)
+		logger.SetFlags(log.LstdFlags | log.Lmicroseconds | log.Lshortfile)
 	}
 
 	logger.Printf("Starting %s v%s", appName, appVersion)
